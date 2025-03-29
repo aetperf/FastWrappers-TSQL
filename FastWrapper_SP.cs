@@ -168,22 +168,34 @@ namespace FastWrapper
 				}
 			}
 
-			// SourceInfos: exactly one of fileInput, query, or (schema+table)
+			// SourceInfos: at least one of fileInput, query, or (schema+table)
 			int sourceChoiceCount = 0;
 			if (!string.IsNullOrEmpty(fileInputVal)) sourceChoiceCount++;
 			if (!string.IsNullOrEmpty(queryVal)) sourceChoiceCount++;
 			if (!string.IsNullOrEmpty(srcSchemaVal) && !string.IsNullOrEmpty(srcTableVal)) sourceChoiceCount++;
 			if (sourceChoiceCount == 0)
 			{
-				throw new ArgumentException("You must supply one of fileInput, query, or (sourceSchema AND sourceTable).");
+				throw new ArgumentException("You must supply at least one of fileInput, query, or (sourceSchema AND sourceTable).");
 			}
-			else if (sourceChoiceCount > 1)
+			else
 			{
-				throw new ArgumentException("You must supply ONLY one of fileInput, query, or (sourceSchema AND sourceTable).");
+				// SourceInfos: exactly one of fileInput or query (if provided) (table +schema is optional)
+				int sourceChoiceCountfileandquery = 0;
+				if (!string.IsNullOrEmpty(fileInputVal)) sourceChoiceCount++;
+				if (!string.IsNullOrEmpty(queryVal)) sourceChoiceCount++;
+				if (sourceChoiceCountfileandquery > 1)
+				{
+					throw new ArgumentException("You must supply only one of fileInput or query");
+				}
 			}
 
-			// Target: either use connect string or explicit params
-			bool hasTgtConnString = !string.IsNullOrEmpty(tgtConnStr);
+
+
+
+
+
+				// Target: either use connect string or explicit params
+				bool hasTgtConnString = !string.IsNullOrEmpty(tgtConnStr);
 			if (hasTgtConnString)
 			{
 				if (!string.IsNullOrEmpty(tgtServerVal) ||
@@ -222,7 +234,7 @@ namespace FastWrapper
 			bool hasMethod = !string.IsNullOrEmpty(methodVal);
 			if (hasMethod)
 			{
-				string[] validMethods = { "None", "Random", "DataDriven", "RangeId", "Ntile", "Ctid", "RowId" };
+				string[] validMethods = { "None", "Random", "DataDriven", "RangeId", "Ntile", "Ctid", "Rowid" };
 				if (Array.IndexOf(validMethods, methodVal) < 0)
 				{
 					throw new ArgumentException($"Invalid method: '{methodVal}'.");
@@ -340,7 +352,8 @@ namespace FastWrapper
 			{
 				args += $" --query {Q(queryVal)}";
 			}
-			else
+			
+			if (!string.IsNullOrEmpty(srcTableVal) && !string.IsNullOrEmpty(srcSchemaVal))
 			{
 				args += $" --sourceschema {Q(srcSchemaVal)}";
 				args += $" --sourcetable {Q(srcTableVal)}";
