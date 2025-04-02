@@ -223,29 +223,35 @@ namespace FastWrapper
 			SqlString settingsFile
 		)
 		{
-			
 
-			// Déchiffrer systématiquement les valeurs sensibles s'il y en a 
+
+
+			
+			//Déchiffrer systématiquement les valeurs sensibles s'il y en a 
+
+
+
+
 			string sourceConnectString = null;
-			if (!string.IsNullOrEmpty((string)sourceConnectStringSecure))
+			if (!(sourceConnectStringSecure.IsNull))
 			{
 				sourceConnectString = AesDecrypt((string)sourceConnectStringSecure);
 			}
 
 			string sourcePassword = null;
-			if (!string.IsNullOrEmpty((string)sourcePasswordSecure))
+			if (!(sourcePasswordSecure.IsNull))
 			{
 				sourcePassword = AesDecrypt((string)sourcePasswordSecure);
 			}
 
 			string targetConnectString = null;
-			if (!string.IsNullOrEmpty((string)targetConnectStringSecure))
+			if (!(targetConnectStringSecure.IsNull))
 			{
 				targetConnectString = AesDecrypt((string)targetConnectStringSecure);
 			}
 
 			string targetPassword = null;
-			if (!string.IsNullOrEmpty((string)targetPasswordSecure))
+			if (!(targetPasswordSecure.IsNull))
 			{
 				targetPassword = AesDecrypt((string)targetPasswordSecure);
 			}

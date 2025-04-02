@@ -28,7 +28,7 @@
 	@distributeKeyColumn [nvarchar](255) = NULL,
 	@degree [int] = 4,
 	@mapmethod [nvarchar](50) = 'Position',
-	@runId [nvarchar](255),
+	@runId [nvarchar](255) = NULL,
 	@settingsFile [nvarchar](4000) = NULL
 WITH EXECUTE AS CALLER
 AS
