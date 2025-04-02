@@ -7,61 +7,319 @@ namespace FastWrapper
 	using System.Diagnostics;
 	using System.IO;
 	using System.Security.Permissions;
+	using System.Security.Cryptography;
 	using Microsoft.SqlServer.Server;
 
 	public static class FastTransferCLR
 	{
-		[SqlProcedure]
+
+		// --------------------------------------------------------------------
+		// 1) Clé et IV statiques pour la démonstration
+		// --------------------------------------------------------------------
+		// Idéalement : stocker la clé ailleurs (DPAPI, config sécurisée, etc.)
+		private static readonly byte[] AesKey = {
+            // 32 octets pour AES-256
+            0x01, 0x33, 0x58, 0xA7, 0x3B, 0x99, 0x2D, 0xFA,
+			0x62, 0x11, 0xD5, 0xE7, 0x8F, 0x2C, 0x99, 0x0A,
+			0xF2, 0x68, 0x44, 0xFA, 0x48, 0x92, 0xBE, 0x65,
+			0x10, 0x7A, 0xCA, 0xAC, 0x9E, 0xDE, 0x7F, 0x7F
+		};
+
+		private static readonly byte[] AesIV = {
+            // 16 octets pour un block AES
+            0x11, 0x22, 0xAA, 0x77, 0x55, 0x99, 0x10, 0x01,
+			0x66, 0x33, 0x45, 0x0F, 0x3A, 0x2B, 0xCC, 0xEE
+		};
+
+		// --------------------------------------------------------------------
+		// 2) Méthode de chiffrement
+		// --------------------------------------------------------------------
+		private static string AesEncrypt(string plainText)
+		{
+			if (plainText == null) return null;
+			using (Aes aes = Aes.Create())
+			{
+				aes.Key = AesKey;
+				aes.IV = AesIV;
+				aes.Mode = CipherMode.CBC;
+				aes.Padding = PaddingMode.PKCS7;
+
+				using (MemoryStream ms = new MemoryStream())
+				using (ICryptoTransform encryptor = aes.CreateEncryptor())
+				using (CryptoStream cs = new CryptoStream(ms, encryptor, CryptoStreamMode.Write))
+				{
+					using (StreamWriter sw = new StreamWriter(cs))
+					{
+						sw.Write(plainText);
+					}
+					byte[] cipherBytes = ms.ToArray();
+					// on retourne un Base64
+					return Convert.ToBase64String(cipherBytes);
+				}
+			}
+		}
+
+		// --------------------------------------------------------------------
+		// 3) Méthode de déchiffrement
+		// --------------------------------------------------------------------
+		private static string AesDecrypt(string base64Cipher)
+		{
+			if (string.IsNullOrEmpty(base64Cipher)) return null;
+			byte[] cipherBytes = Convert.FromBase64String(base64Cipher);
+			using (Aes aes = Aes.Create())
+			{
+				aes.Key = AesKey;
+				aes.IV = AesIV;
+				aes.Mode = CipherMode.CBC;
+				aes.Padding = PaddingMode.PKCS7;
+
+				using (MemoryStream ms = new MemoryStream(cipherBytes))
+				using (ICryptoTransform decryptor = aes.CreateDecryptor())
+				using (CryptoStream cs = new CryptoStream(ms, decryptor, CryptoStreamMode.Read))
+				using (StreamReader sr = new StreamReader(cs))
+				{
+					return sr.ReadToEnd();
+				}
+			}
+		}
+
+		// --------------------------------------------------------------------
+		// 4) Fonction CLR : EncryptString
+		// --------------------------------------------------------------------
+		// Permet de renvoyer la version chiffrée (Base64) d’une chaîne en clair
+		// à partir de T-SQL.
+		// --------------------------------------------------------------------
+		[SqlFunction]
+		public static SqlString EncryptString(SqlString plainText)
+		{
+			if (plainText.IsNull) return SqlString.Null;
+			string encrypted = AesEncrypt(plainText.Value);
+			return new SqlString(encrypted);
+		}
+
+
+		[SqlProcedure]	
 		public static void RunFastTransfer(
-			// 1) FastTransfer Binary Directory/Path
-			SqlString fastTransferDir,   // e.g. ".\" or "C:\\tools\\MyFastTransfer" or "./fasttransfer"
+		SqlString fastTransferDir,
+		SqlString sourceConnectionType,
+		SqlString sourceConnectString,
+		SqlString sourceServer,
+		SqlString sourceDSN,
+		SqlString sourceProvider,
+		SqlBoolean isSourceTrusted,
+		SqlString sourceUser,
+		SqlString sourcePassword,
+		SqlString sourceDatabase,
+		SqlString fileInput,
+		SqlString query,
+		SqlString sourceSchema,
+		SqlString sourceTable,
+		SqlString targetConnectionType,
+		SqlString targetConnectString,
+		SqlString targetServer,
+		SqlBoolean isTargetTrusted,
+		SqlString targetUser,
+		SqlString targetPassword,
+		SqlString targetDatabase,
+		SqlString targetSchema,
+		SqlString targetTable,
+		SqlString loadMode,
+		SqlInt32 batchSize,
+		SqlString method,
+		SqlString distributeKeyColumn,
+		SqlInt32 degree,
+		SqlString mapMethod,
+		SqlString runId,
+		SqlString settingsFile
+		)
+		{
 
-			// 2) Source Connection
-			SqlString sourceConnectionType, // must be one of [clickhouse, duckdb, hana, mssql, mysql, nzsql, odbc, oledb, oraodp, pgcopy, pgsql, teradata]
-			SqlString sourceConnectString,  // if provided, we skip server/user/password/etc.
+			RunFastTransferInternal(
+			fastTransferDir,
+			sourceConnectionType,
+			sourceConnectString,
+			sourceServer,
+			sourceDSN,
+			sourceProvider,
+			isSourceTrusted,
+			sourceUser,
+			sourcePassword,
+			sourceDatabase,
+			fileInput,
+			query,
+			sourceSchema,
+			sourceTable,
+			targetConnectionType,
+			targetConnectString,
+			targetServer,
+			isTargetTrusted,
+			targetUser,
+			targetPassword,
+			targetDatabase,
+			targetSchema,
+			targetTable,
+			loadMode,
+			batchSize,
+			method,
+			distributeKeyColumn,
+			degree,
+			mapMethod,
+			runId,
+			settingsFile
+			);
+		}
 
-			// If not using connect string, then:
-			SqlString sourceServer,         // e.g. "Host", "Host:Port", "Host\\Instance", "Host:Port/TNSService"
-			SqlString sourceDSN,           // optional DSN name if using ODBC
-			SqlString sourceProvider,       // optional for OLEDB
+
+		// --------------------------------------------------------------------
+		// RunFastTransfer_Secure :
+		// Toutes les valeurs sensibles (password, connectString) sont
+		// toujours passées en version chiffrée (Base64).
+		// On déchiffre avant la logique de construction + exécution du binaire.
+		// --------------------------------------------------------------------
+		[SqlProcedure]
+		public static void RunFastTransfer_Secure(
+			SqlString fastTransferDir,
+
+			// 2) Source Connection 
+			SqlString sourceConnectionType,
+			SqlString sourceConnectStringSecure,   // chiffré
+			SqlString sourceServer,
+			SqlString sourceDSN,
+			SqlString sourceProvider,
 			SqlBoolean isSourceTrusted,
 			SqlString sourceUser,
-			SqlString sourcePassword,
+			SqlString sourcePasswordSecure,        // chiffré
 			SqlString sourceDatabase,
 
 			// 3) Source Infos
-			SqlString fileInput,    // e.g. "C:\\path\\to\\file.sql"
-			SqlString query,        // e.g. "SELECT * FROM table"
+			SqlString fileInput,
+			SqlString query,
 			SqlString sourceSchema,
 			SqlString sourceTable,
 
-			// 4) Target Connection
-			SqlString targetConnectionType, // must be one of [clickhousebulk, duckdb, hanabulk, msbulk, mysqlbulk, nzbulk, orabulk, oradirect, pgcopy, teradata]
-			SqlString targetConnectString,
-
-			// If not using connect string, then:
+			// 4) Target Connection 
+			SqlString targetConnectionType,
+			SqlString targetConnectStringSecure,   // chiffré
 			SqlString targetServer,
 			SqlBoolean isTargetTrusted,
 			SqlString targetUser,
-			SqlString targetPassword,
+			SqlString targetPasswordSecure,        // chiffré
 			SqlString targetDatabase,
 
 			// 5) Target Infos
 			SqlString targetSchema,
 			SqlString targetTable,
-			SqlString loadMode,     // "Append" or "Truncate"
-			SqlInt32 batchSize,     // e.g. 10000
+			SqlString loadMode,
+			SqlInt32 batchSize,
 
-			// 6) Advanced Parameters
-			SqlString method,       // "None", "Random", "DataDriven", "RangeId", "Ntile", "Ctid", "Rowid"
-			SqlString distributeKeyColumn, // required if method in ["Random","DataDriven","RangeId","Ntile"]
-			SqlInt32 degree,        // concurrency degree if method != "None" useless if method = "None" should be != 1
-			SqlString mapMethod,    // "Position"(default) or "Name"
+			// 6) Advanced
+			SqlString method,
+			SqlString distributeKeyColumn,
+			SqlInt32 degree,
+			SqlString mapMethod,
 
-			// 7) Log Parameters
+			// 7) Logging
 			SqlString runId,
 			SqlString settingsFile
 		)
+		{
+			
+
+			// Déchiffrer systématiquement les valeurs sensibles s'il y en a 
+			string sourceConnectString = null;
+			if (!string.IsNullOrEmpty((string)sourceConnectStringSecure))
+			{
+				sourceConnectString = AesDecrypt((string)sourceConnectStringSecure);
+			}
+
+			string sourcePassword = null;
+			if (!string.IsNullOrEmpty((string)sourcePasswordSecure))
+			{
+				sourcePassword = AesDecrypt((string)sourcePasswordSecure);
+			}
+
+			string targetConnectString = null;
+			if (!string.IsNullOrEmpty((string)targetConnectStringSecure))
+			{
+				targetConnectString = AesDecrypt((string)targetConnectStringSecure);
+			}
+
+			string targetPassword = null;
+			if (!string.IsNullOrEmpty((string)targetPasswordSecure))
+			{
+				targetPassword = AesDecrypt((string)targetPasswordSecure);
+			}
+
+
+			RunFastTransferInternal(
+			fastTransferDir,
+			sourceConnectionType,
+			sourceConnectString,
+			sourceServer,
+			sourceDSN,
+			sourceProvider,
+			isSourceTrusted,
+			sourceUser,
+			sourcePassword,
+			sourceDatabase,
+			fileInput,
+			query,
+			sourceSchema,
+			sourceTable,
+			targetConnectionType,
+			targetConnectString,
+			targetServer,
+			isTargetTrusted,
+			targetUser,
+			targetPassword,
+			targetDatabase,
+			targetSchema,
+			targetTable,
+			loadMode,
+			batchSize,
+			method,
+			distributeKeyColumn,
+			degree,
+			mapMethod,
+			runId,
+			settingsFile
+			);
+		}
+
+		private static void RunFastTransferInternal(
+		SqlString fastTransferDir,		// 1) FastTransfer Binary Directory/Path e.g. ".\" or "C:\\tools\\MyFastTransfer" or "./fasttransfer"
+		SqlString sourceConnectionType, // must be one of [clickhouse, duckdb, hana, mssql, mysql, nzsql, odbc, oledb, oraodp, pgcopy, pgsql, teradata]
+		SqlString sourceConnectString,	// if provided, we skip server/user/password/etc.
+		SqlString sourceServer,			// e.g. "Host", "Host:Port", "Host\\Instance", "Host:Port/TNSService"
+		SqlString sourceDSN,            // optional DSN name, if using ODBC
+		SqlString sourceProvider,       // optional, for OLEDB only
+		SqlBoolean isSourceTrusted,
+		SqlString sourceUser,
+		SqlString sourcePassword,
+		SqlString sourceDatabase,
+		SqlString fileInput,            // e.g. "C:\\path\\to\\file.sql"
+		SqlString query,                // e.g. "SELECT * FROM table"
+		SqlString sourceSchema,         // e.g. "dbo" . Required for some parallel methods (RowId, Ctid, Ntile, RangeId)
+		SqlString sourceTable,          // e.g. "MyTable" . Required for some parallel methods (RowId, Ctid, Ntile, RangeId)
+		SqlString targetConnectionType, // must be one of [clickhousebulk, duckdb, hanabulk, msbulk, mysqlbulk, nzbulk, orabulk, oradirect, pgcopy, teradata]
+		SqlString targetConnectString,
+		SqlString targetServer,
+		SqlBoolean isTargetTrusted,
+		SqlString targetUser,
+		SqlString targetPassword,
+		SqlString targetDatabase,
+		SqlString targetSchema,         // Mandatory. eg "public"
+		SqlString targetTable,          // Mandatory. eg "CopyTable"
+		SqlString loadMode,             // "Append" or "Truncate"
+		SqlInt32 batchSize,             // e.g. 130000
+		SqlString method,               // distribution method for parallelism :"None", "Random", "DataDriven", "RangeId", "Ntile", "Ctid", "Rowid"
+		SqlString distributeKeyColumn,  // required if method in ["Random","DataDriven","RangeId","Ntile"]
+		SqlInt32 degree,                // concurrency degree if method != "None" useless if method = "None" should be != 1, can be less than 0 for dynamic degree (based on cpucount on the platform where FastTransfer is running. -2 = CpuCount/2)
+		SqlString mapMethod,            // "Position"(default) or "Name" (Automatic mapping of columns based on names (case insensitive) with tolerance on the order of columns. Non present columns in source or target are ignored. Name may mot be available for all target types (see doc))
+		SqlString runId,                // a run identifier for logging (can be a string for grouping or a unique identifier). Guid is used if not provide
+		SqlString settingsFile			// path for a custom FastTransfer_Settings.json file, for custom logging
+		)
+		
 		{
 			// --------------------------------------------------------------------
 			// Convert SqlTypes to .NET types
