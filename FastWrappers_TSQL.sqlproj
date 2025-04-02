@@ -84,6 +84,7 @@
   </ItemGroup>
   <ItemGroup>
     <Build Include="FastWrapper_Roles.sql" />
-    <Build Include="Procedure1.sql" />
+    <Build Include="xp_RunFastTransfer.sql" />
+    <Build Include="xp_RunFastTransfer_secure.sql" />
   </ItemGroup>
 </Project>
