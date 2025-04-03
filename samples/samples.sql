@@ -30,7 +30,7 @@ EXEC dbo.xp_RunFastTransfer
 
 -- Sample for the dbo.orders table between 2 mssql instances using xp_RunFastTransfer_secure
 
--- use SELECT [dbo].[EncryptString]('FastPassword') to get the encrypted password
+-- use SELECT [dbo].[EncryptString]('<YourPassWordToEncrypt>') to get the encrypted password
 
 EXEC dbo.xp_RunFastTransfer_secure
 	@fastTransferDir = 'C:\FastTransfer\win-x64\latest',
