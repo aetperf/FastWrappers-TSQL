@@ -29,7 +29,8 @@
 	@degree [int] = 4,
 	@mapmethod [nvarchar](50) = 'Position',
 	@runId [nvarchar](255) = NULL,
-	@settingsFile [nvarchar](4000) = NULL
+	@settingsFile [nvarchar](4000) = NULL,
+	@debug [bit] = 0
 WITH EXECUTE AS CALLER
 AS
 EXTERNAL NAME [FastWrappers_TSQL].[FastWrapper.FastTransferCLR].[RunFastTransfer]

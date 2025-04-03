@@ -6,82 +6,10 @@ namespace FastWrapper
 	using System.Data.SqlTypes;
 	using System.Diagnostics;
 	using System.IO;
-	using System.Security.Permissions;
-	using System.Security.Cryptography;
 	using Microsoft.SqlServer.Server;
 
 	public static class FastTransferCLR
 	{
-
-		// --------------------------------------------------------------------
-		// 1) Clé et IV statiques pour la démonstration
-		// --------------------------------------------------------------------
-		// Idéalement : stocker la clé ailleurs (DPAPI, config sécurisée, etc.)
-		private static readonly byte[] AesKey = {
-            // 32 octets pour AES-256
-            0x01, 0x33, 0x58, 0xA7, 0x3B, 0x99, 0x2D, 0xFA,
-			0x62, 0x11, 0xD5, 0xE7, 0x8F, 0x2C, 0x99, 0x0A,
-			0xF2, 0x68, 0x44, 0xFA, 0x48, 0x92, 0xBE, 0x65,
-			0x10, 0x7A, 0xCA, 0xAC, 0x9E, 0xDE, 0x7F, 0x7F
-		};
-
-		private static readonly byte[] AesIV = {
-            // 16 octets pour un block AES
-            0x11, 0x22, 0xAA, 0x77, 0x55, 0x99, 0x10, 0x01,
-			0x66, 0x33, 0x45, 0x0F, 0x3A, 0x2B, 0xCC, 0xEE
-		};
-
-		// --------------------------------------------------------------------
-		// 2) Méthode de chiffrement
-		// --------------------------------------------------------------------
-		private static string AesEncrypt(string plainText)
-		{
-			if (plainText == null) return null;
-			using (Aes aes = Aes.Create())
-			{
-				aes.Key = AesKey;
-				aes.IV = AesIV;
-				aes.Mode = CipherMode.CBC;
-				aes.Padding = PaddingMode.PKCS7;
-
-				using (MemoryStream ms = new MemoryStream())
-				using (ICryptoTransform encryptor = aes.CreateEncryptor())
-				using (CryptoStream cs = new CryptoStream(ms, encryptor, CryptoStreamMode.Write))
-				{
-					using (StreamWriter sw = new StreamWriter(cs))
-					{
-						sw.Write(plainText);
-					}
-					byte[] cipherBytes = ms.ToArray();
-					// on retourne un Base64
-					return Convert.ToBase64String(cipherBytes);
-				}
-			}
-		}
-
-		// --------------------------------------------------------------------
-		// 3) Méthode de déchiffrement
-		// --------------------------------------------------------------------
-		private static string AesDecrypt(string base64Cipher)
-		{
-			if (string.IsNullOrEmpty(base64Cipher)) return null;
-			byte[] cipherBytes = Convert.FromBase64String(base64Cipher);
-			using (Aes aes = Aes.Create())
-			{
-				aes.Key = AesKey;
-				aes.IV = AesIV;
-				aes.Mode = CipherMode.CBC;
-				aes.Padding = PaddingMode.PKCS7;
-
-				using (MemoryStream ms = new MemoryStream(cipherBytes))
-				using (ICryptoTransform decryptor = aes.CreateDecryptor())
-				using (CryptoStream cs = new CryptoStream(ms, decryptor, CryptoStreamMode.Read))
-				using (StreamReader sr = new StreamReader(cs))
-				{
-					return sr.ReadToEnd();
-				}
-			}
-		}
 
 		// --------------------------------------------------------------------
 		// 4) Fonction CLR : EncryptString
@@ -93,7 +21,7 @@ namespace FastWrapper
 		public static SqlString EncryptString(SqlString plainText)
 		{
 			if (plainText.IsNull) return SqlString.Null;
-			string encrypted = AesEncrypt(plainText.Value);
+			string encrypted = KeyProvider.AesEncrypt(plainText.Value);
 			return new SqlString(encrypted);
 		}
 
@@ -130,7 +58,8 @@ namespace FastWrapper
 		SqlInt32 degree,
 		SqlString mapMethod,
 		SqlString runId,
-		SqlString settingsFile
+		SqlString settingsFile,
+		SqlBoolean debug
 		)
 		{
 
@@ -165,7 +94,8 @@ namespace FastWrapper
 			degree,
 			mapMethod,
 			runId,
-			settingsFile
+			settingsFile,
+			debug
 			);
 		}
 
@@ -220,7 +150,8 @@ namespace FastWrapper
 
 			// 7) Logging
 			SqlString runId,
-			SqlString settingsFile
+			SqlString settingsFile,
+			SqlBoolean debug       
 		)
 		{
 
@@ -235,25 +166,25 @@ namespace FastWrapper
 			string sourceConnectString = null;
 			if (!(sourceConnectStringSecure.IsNull))
 			{
-				sourceConnectString = AesDecrypt((string)sourceConnectStringSecure);
+				sourceConnectString = KeyProvider.AesDecrypt((string)sourceConnectStringSecure);
 			}
 
 			string sourcePassword = null;
 			if (!(sourcePasswordSecure.IsNull))
 			{
-				sourcePassword = AesDecrypt((string)sourcePasswordSecure);
+				sourcePassword = KeyProvider.AesDecrypt((string)sourcePasswordSecure);
 			}
 
 			string targetConnectString = null;
 			if (!(targetConnectStringSecure.IsNull))
 			{
-				targetConnectString = AesDecrypt((string)targetConnectStringSecure);
+				targetConnectString = KeyProvider.AesDecrypt((string)targetConnectStringSecure);
 			}
 
 			string targetPassword = null;
 			if (!(targetPasswordSecure.IsNull))
 			{
-				targetPassword = AesDecrypt((string)targetPasswordSecure);
+				targetPassword = KeyProvider.AesDecrypt((string)targetPasswordSecure);
 			}
 
 
@@ -288,7 +219,8 @@ namespace FastWrapper
 			degree,
 			mapMethod,
 			runId,
-			settingsFile
+			settingsFile,
+			debug
 			);
 		}
 
@@ -323,7 +255,8 @@ namespace FastWrapper
 		SqlInt32 degree,                // concurrency degree if method != "None" useless if method = "None" should be != 1, can be less than 0 for dynamic degree (based on cpucount on the platform where FastTransfer is running. -2 = CpuCount/2)
 		SqlString mapMethod,            // "Position"(default) or "Name" (Automatic mapping of columns based on names (case insensitive) with tolerance on the order of columns. Non present columns in source or target are ignored. Name may mot be available for all target types (see doc))
 		SqlString runId,                // a run identifier for logging (can be a string for grouping or a unique identifier). Guid is used if not provide
-		SqlString settingsFile			// path for a custom FastTransfer_Settings.json file, for custom logging
+		SqlString settingsFile,         // path for a custom FastTransfer_Settings.json file, for custom logging
+		SqlBoolean debug				// for debugging purpose, if true, the FastTransfer_Settings.json file is created in the current directory with the default settings
 		)
 		
 		{
@@ -368,6 +301,9 @@ namespace FastWrapper
 
 			string runIdVal = runId.IsNull ? null : runId.Value.Trim();
 			string settingsFileVal = settingsFile.IsNull ? null : settingsFile.Value.Trim();
+
+			bool debugVal = !debug.IsNull && debug.Value ? true : false;
+
 
 			// --------------------------------------------------------------------
 			// 1. Parameter Validation
@@ -454,10 +390,6 @@ namespace FastWrapper
 			}
 
 
-
-
-
-
 				// Target: either use connect string or explicit params
 				bool hasTgtConnString = !string.IsNullOrEmpty(tgtConnStr);
 			if (hasTgtConnString)
@@ -501,7 +433,7 @@ namespace FastWrapper
 				string[] validMethods = { "None", "Random", "DataDriven", "RangeId", "Ntile", "Ctid", "Rowid" };
 				if (Array.IndexOf(validMethods, methodVal) < 0)
 				{
-					throw new ArgumentException($"Invalid method: '{methodVal}'.");
+					throw new ArgumentException($"Invalid method: '{methodVal}'. use 'None', 'Random', 'DataDriven', 'RangeId', 'Ntile', 'Ctid' or 'Rowid'. WARNING the parameter is Case Sensitive");
 				}
 
 				if (!methodVal.Equals("None"))
@@ -514,7 +446,7 @@ namespace FastWrapper
 					{
 						if (string.IsNullOrEmpty(distKeyColVal))
 						{
-							throw new ArgumentException($"When method is '{methodVal}', you must provide distributeKeyColumn.");
+							throw new ArgumentException($"When method is '{methodVal}', you must provide --distributeKeyColumn.");
 						}
 					}
 
@@ -525,13 +457,23 @@ namespace FastWrapper
 				}
 			}
 
+			bool hasMode = !string.IsNullOrEmpty(loadModeVal);
+			if (hasMode)
+			{
+				string[] validModes = { "Append", "Truncate" };
+				if (Array.IndexOf(validModes, loadModeVal) < 0)
+				{
+					throw new ArgumentException($"Invalid loadmode: '{loadModeVal}'. Use 'Append' or 'Truncate'.  WARNING the parameter is Case Sensitive");
+				}
+			}
+
 			bool hasMapMethod = !string.IsNullOrEmpty(mapMethodVal);
 			if (hasMapMethod)
 			{
 				string[] validMapMethods = { "Position", "Name" };
 				if (Array.IndexOf(validMapMethods, mapMethodVal) < 0)
 				{
-					throw new ArgumentException($"Invalid mapMethod: '{mapMethodVal}'.");
+					throw new ArgumentException($"Invalid mapMethod: '{mapMethodVal}'. use 'Position' or 'Name'.  WARNING the parameter is Case Sensitive");
 				}
 			}
 
@@ -552,8 +494,6 @@ namespace FastWrapper
 				exePath += "FastTransfer.exe";
 			}
 
-
-			SqlContext.Pipe.Send("FastTransfer Path: " + exePath + Environment.NewLine);
 
 			// --------------------------------------------------------------------
 			// 3. Construct Command-Line Arguments
@@ -697,8 +637,19 @@ namespace FastWrapper
 			// Trim leading space
 			args = args.Trim();
 
-			//print the command line exe and args
-			SqlContext.Pipe.Send("FastTransfer Command " + exePath + " " + args + Environment.NewLine);
+			//args4Log : for logging purpose, remove password or passwd info in the args string using regexp
+			string args4Log = args;
+			args4Log = System.Text.RegularExpressions.Regex.Replace(args4Log, @"--sourcepassword\s+""[^""]*""", "--sourcepassword \"<hidden>\"");
+			args4Log = System.Text.RegularExpressions.Regex.Replace(args4Log, @"--targetpassword\s+""[^""]*""", "--targetpassword \"<hidden>\"");
+			args4Log = System.Text.RegularExpressions.Regex.Replace(args4Log, @"--sourceconnectstring\s+""[^""]*""", "--sourceconnectstring \"<hidden>\"");
+			args4Log = System.Text.RegularExpressions.Regex.Replace(args4Log, @"--targetconnectstring\s+""[^""]*""", "--targetconnectstring \"<hidden>\"");
+
+
+			if (debugVal)
+			{			
+				//print the command line exe and args
+				SqlContext.Pipe.Send("FastTransfer Command " + exePath + " " + args4Log + Environment.NewLine);				
+			}
 
 			// --------------------------------------------------------------------
 			// 4. Execute the CLI
