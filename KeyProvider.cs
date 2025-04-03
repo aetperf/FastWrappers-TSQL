@@ -6,7 +6,7 @@ namespace FastWrapper
 {
 	public static class KeyProvider
 	{
-		// Clé et IV en dur (exemple)
+		// hard coded AES key and IV as sample (change it and compile your own)
 		private static readonly byte[] AesKey = {
 			0x01, 0x33, 0x58, 0xA7, 0x3B, 0x99, 0x2D, 0xFA,
 			0x62, 0x11, 0xD5, 0xE7, 0x8F, 0x2C, 0x99, 0x0A,
@@ -19,7 +19,7 @@ namespace FastWrapper
 			0x66, 0x33, 0x45, 0x0F, 0x3A, 0x2B, 0xCC, 0xEE
 		};
 
-		// Méthodes de chiffrement / déchiffrement
+		// Encrypt and decrypt methods
 
 		public static string AesEncrypt(string plainText)
 		{
