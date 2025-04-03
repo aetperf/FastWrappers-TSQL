@@ -226,7 +226,7 @@ namespace FastWrapper
 
 		private static void RunFastTransferInternal(
 		SqlString fastTransferDir,		// 1) FastTransfer Binary Directory/Path e.g. ".\" or "C:\\tools\\MyFastTransfer" or "./fasttransfer"
-		SqlString sourceConnectionType, // must be one of [clickhouse, duckdb, hana, mssql, mysql, nzsql, odbc, oledb, oraodp, pgcopy, pgsql, teradata]
+		SqlString sourceConnectionType, // must be one of [clickhouse, duckdb, duckdbstream, hana, mssql, mysql, nzsql, odbc, oledb, oraodp, pgcopy, pgsql, teradata]
 		SqlString sourceConnectString,	// if provided, we skip server/user/password/etc.
 		SqlString sourceServer,			// e.g. "Host", "Host:Port", "Host\\Instance", "Host:Port/TNSService"
 		SqlString sourceDSN,            // optional DSN name, if using ODBC
@@ -316,9 +316,8 @@ namespace FastWrapper
 
 			// Validate SourceConnectionType
 			string[] validSourceTypes = {
-			"clickhouse", "duckdb", "hana", "mssql", "mysql",
-			"nzsql", "odbc", "oledb", "oraodp", "pgcopy", "pgsql", "teradata"
-		};
+			"clickhouse", "duckdb", "duckdbstream", "hana", "mssql", "mysql",
+			"nzsql", "odbc", "oledb", "oraodp", "pgcopy", "pgsql", "teradata"};
 			if (Array.IndexOf(validSourceTypes, srcConnType) < 0)
 			{
 				throw new ArgumentException($"Invalid SourceConnectionType: '{srcConnType}'. Possible value are {string.Join(", ", validSourceTypes)}.");
@@ -327,8 +326,7 @@ namespace FastWrapper
 			// Validate TargetConnectionType
 			string[] validTargetTypes = {
 			"clickhousebulk", "duckdb", "hanabulk", "msbulk", "mysqlbulk",
-			"nzbulk", "orabulk", "oradirect", "pgcopy", "teradata"
-		};
+			"nzbulk", "orabulk", "oradirect", "pgcopy", "teradata"};
 			if (Array.IndexOf(validTargetTypes, tgtConnType) < 0)
 			{
 				throw new ArgumentException($"Invalid TargetConnectionType: '{tgtConnType}'. Possible value are {string.Join(", ", validTargetTypes)}.");
