@@ -20,7 +20,7 @@ EXEC dbo.xp_RunFastTransfer
 	@targetTable = 'orders_3',
 	@loadmode = 'Truncate', -- other mode is Append
 	@batchSize = 130000,
-	@method = 'RangeId',  -- other methods are Ntile, Random, Ctid (pgsql and pgcopy only), RowId (oraodp only)
+	@method = 'RangeId',  -- other methods are Ntile, Random, Ctid (pgsql and pgcopy only), RowId (oraodp only), NZDataSlice (Netezza only)
 	@distributeKeyColumn = 'o_orderkey',
 	@degree = 12,
 	@mapmethod = 'Name', --other method is Position

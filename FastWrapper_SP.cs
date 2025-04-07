@@ -428,10 +428,10 @@ namespace FastWrapper
 			bool hasMethod = !string.IsNullOrEmpty(methodVal);
 			if (hasMethod)
 			{
-				string[] validMethods = { "None", "Random", "DataDriven", "RangeId", "Ntile", "Ctid", "Rowid" };
+				string[] validMethods = { "None", "Random", "DataDriven", "RangeId", "Ntile", "Ctid", "Rowid" , "NZDataSlice" };
 				if (Array.IndexOf(validMethods, methodVal) < 0)
 				{
-					throw new ArgumentException($"Invalid method: '{methodVal}'. use 'None', 'Random', 'DataDriven', 'RangeId', 'Ntile', 'Ctid' or 'Rowid'. WARNING the parameter is Case Sensitive");
+					throw new ArgumentException($"Invalid method: '{methodVal}'. use 'None', 'Random', 'DataDriven', 'RangeId', 'Ntile', 'NZDataSlice', 'Ctid' or 'Rowid'. WARNING the parameter is Case Sensitive");
 				}
 
 				if (!methodVal.Equals("None"))
