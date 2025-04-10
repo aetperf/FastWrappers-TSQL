@@ -89,7 +89,10 @@
   </ItemGroup>
   <ItemGroup>
     <Build Include="FastWrapper_Roles.sql" />
-    <Build Include="xp_RunFastTransfer.sql" />
     <Build Include="xp_RunFastTransfer_secure.sql" />
   </ItemGroup>
+  <PropertyGroup>
+    <PostBuildEvent>
+    </PostBuildEvent>
+  </PropertyGroup>
 </Project>
