@@ -36,26 +36,31 @@ EXEC dbo.xp_RunFastTransfer
 
 ### Copy one table using 12 threads between an Oracle database and SQL instance 
 ```TSQL
-EXEC dbo.xp_RunFastTransfer
-     @fastTransferDir='C:\FastTransfer\win-x64\latest',
-     @sourceConnectionType = N'oraodp',
-     @sourceServer = N'localhost:1521/ORCLPDB',
-     @sourceUser = N'TPCH_IN',
-     @sourcePassword = N'TPCH_IN',
-     @sourceDatabase = N'ORCLPDB',
-     @sourceSchema = N'TPCH_IN',
-     @sourceTable = N'ORDERS_FLAT',
-     @targetConnectionType = N'msbulk',
-     @targetServer = N'localhost\SS2025',
-     @targetUser = N'FastUser',
-     @targetPassword = N'FastPassword',
-     @targetDatabase = N'tpch_test',
-     @targetSchema = N'dbo',
-     @targetTable = N'orders_3',
-     @loadMode = N'Truncate',
-     @batchSize = 130000,
-     @method = N'Rowid',
-     @degree = 12,
+-- use SELECT [dbo].[EncryptString]('<YourPassWordToEncrypt>') to get the encrypted password
+
+EXEC dbo.xp_RunFastTransfer_secure
+	@fastTransferDir = 'C:\FastTransfer\win-x64\latest',
+    @sourceConnectionType = 'mssql',
+	@sourceServer = 'localhost',
+	@sourceUser = 'FastUser',
+	@sourcePasswordSecure = 'wi1/VHz9s+fp45186iLYYQ==',
+	@sourceDatabase = 'tpch_test',
+	@sourceSchema = 'dbo',
+	@sourceTable = 'orders',
+	@targetConnectionType = 'msbulk',
+	@targetServer = 'localhost\SS2025',
+	@targetUser = 'FastUser',
+	@targetPasswordSecure = 'wi1/VHz9s+fp45186iLYYQ==',
+	@targetDatabase = 'tpch_test',
+	@targetSchema = 'dbo',
+	@targetTable = 'orders_3',
+	@loadmode = 'Truncate',
+	@batchSize = 130000,
+	@method = 'RangeId',
+	@distributeKeyColumn = 'o_orderkey',
+	@degree = 12,
+	@mapmethod = 'Name',
+	@runId = 'test_MSSQL_to_MSSQL_P12_RangeId'
      @mapmethod = 'Name',
      @runId = N'CLRWrap_Run_ORA2MS_20250328'
 ```
