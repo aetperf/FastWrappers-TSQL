@@ -9,19 +9,20 @@ Samples usage :
 
 ### Copy one table using 12 threads between two MSSQL instances 
 ```TSQL
-EXEC dbo.xp_RunFastTransfer
+-- use SELECT [dbo].[EncryptString]('<YourPassWordToEncrypt>') to get the encrypted password
+EXEC dbo.xp_RunFastTransfer_secure
      @fastTransferDir='C:\FastTransfert\win-x64\latest',
      @sourceConnectionType = N'mssql',
      @sourceServer = N'localhost',
      @sourceUser = N'FastUser',
-     @sourcePassword = N'FastPassword',
+     @sourcePasswordSecure = 'wi1/VHz9s+fp45186iLYYQ==',
      @sourceDatabase = N'tpch_test',
      @sourceSchema = N'dbo',
      @sourceTable = N'orders',
      @targetConnectionType = N'msbulk',
      @targetServer = N'localhost\SS2025',
      @targetUser = N'FastUser',
-     @targetPassword = N'FastPassword',
+     @targetPasswordSecure = 'wi1/VHz9s+fp45186iLYYQ==',
      @targetDatabase = N'tpch_test',
      @targetSchema = N'dbo',
      @targetTable = N'orders_3',
