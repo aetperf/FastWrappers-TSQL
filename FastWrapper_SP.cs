@@ -2,11 +2,12 @@
 namespace FastWrapper
 {
 
+	using Microsoft.SqlServer.Server;
 	using System;
+	using System.Data;
 	using System.Data.SqlTypes;
 	using System.Diagnostics;
 	using System.IO;
-	using Microsoft.SqlServer.Server;
 
 	public static class FastTransferCLR
 	{
@@ -628,6 +629,61 @@ namespace FastWrapper
 							SqlContext.Pipe.Send(chunk);
 						}
 					}
+					// Extract some metrics from the end of the stdout (last 3000 characters) and search for 
+					// Total rows : xxxx to get the number of rows processed
+					// Total columns : xxxx to get the number of columns processed
+					// Total cells : xxxx to get the number of cells processed
+					// Total time : Elapsed=xxxx ms to get the total time taken in milliseconds
+					// Target table : ... -|- TargetTable -|- Completed Load
+
+					if (stdout.Length > 3000)
+					{
+						stdout = stdout.Substring(stdout.Length - 3000);
+					}
+
+					// Extract metrics from stdout using regex
+					string totalRows = System.Text.RegularExpressions.Regex.Match(stdout, @"Total rows\s*:\s*(\d+)").Groups[1].Value;
+					string totalColumns = System.Text.RegularExpressions.Regex.Match(stdout, @"Total columns\s*:\s*(\d+)").Groups[1].Value;
+					string totalCells = System.Text.RegularExpressions.Regex.Match(stdout, @"Total cells\s*:\s*(\d+)").Groups[1].Value;
+					string totalTime = System.Text.RegularExpressions.Regex.Match(stdout, @"Elapsed\s*=\s*(\d+)\s*ms").Groups[1].Value;
+
+					// Send metrics to the SQL client as a table output added to the parameters (exepted the passwords and connect strings)
+					SqlDataRecord record = new SqlDataRecord(
+						new SqlMetaData("targetdatabase", SqlDbType.NVarChar, 128),
+						new SqlMetaData("targetSchema", SqlDbType.NVarChar, 128),
+						new SqlMetaData("targetTable", SqlDbType.NVarChar, 128),
+						new SqlMetaData("TotalRows", SqlDbType.BigInt),
+						new SqlMetaData("TotalColumns", SqlDbType.Int),
+						new SqlMetaData("TotalCells", SqlDbType.BigInt),
+						new SqlMetaData("TotalTimeMs", SqlDbType.BigInt),
+						new SqlMetaData("Status", SqlDbType.Int),
+						new SqlMetaData("StdErr", SqlDbType.NVarChar, -1) // -1 for max length (unlimited)
+					);
+
+					var errorMsg = string.Empty;
+					if (exitCode != 0)
+					{
+						errorMsg = $"FastTransfer process failed with exit code {exitCode}. See stderr for details.";
+						errorMsg += Environment.NewLine + stdout;
+					}
+
+
+					record.SetString(0, tgtDatabaseVal ?? string.Empty);
+					record.SetString(1, tgtSchemaVal ?? string.Empty);
+					record.SetString(2, tgtTableVal ?? string.Empty);
+					record.SetInt64(3, Int64.TryParse(totalRows, out Int64 rows) ? rows : 0);
+					record.SetInt32(4, int.TryParse(totalColumns, out int cols) ? cols : 0);
+					record.SetInt64(5, Int64.TryParse(totalCells, out Int64 cells) ? cells : 0);
+					record.SetInt64(6, Int64.TryParse(totalTime, out Int64 time) ? time : 0);
+					record.SetInt32(7, exitCode); // Status: 0 for success, non-zero for error
+					record.SetString(8, errorMsg);
+
+
+					SqlContext.Pipe.SendResultsStart(record);
+					SqlContext.Pipe.SendResultsRow(record);
+					SqlContext.Pipe.SendResultsEnd();
+
+
 					if (!string.IsNullOrEmpty(stderr))
 					{
 						SqlContext.Pipe.Send("FastTransfer stderr:\r\n" + stderr);
