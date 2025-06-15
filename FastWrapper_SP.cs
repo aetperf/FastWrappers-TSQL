@@ -78,7 +78,11 @@ namespace FastWrapper
 			// 7) Logging
 			SqlString runId,
 			SqlString settingsFile,
-			SqlBoolean debug       
+			SqlBoolean debug,
+
+			// 8) License (optional, can be null or empty if not required
+			SqlString license
+
 		)
 		{
 
@@ -146,8 +150,9 @@ namespace FastWrapper
 			degree,
 			mapMethod,
 			runId,
-			settingsFile,
-			debug
+			settingsFile,			
+			debug,
+			license: null // license is not used in this method, but can be passed if needed
 			);
 		}
 
@@ -182,9 +187,10 @@ namespace FastWrapper
 		SqlInt32 degree,                // concurrency degree if method != "None" useless if method = "None" should be != 1, can be less than 0 for dynamic degree (based on cpucount on the platform where FastTransfer is running. -2 = CpuCount/2)
 		SqlString mapMethod,            // "Position"(default) or "Name" (Automatic mapping of columns based on names (case insensitive) with tolerance on the order of columns. Non present columns in source or target are ignored. Name may mot be available for all target types (see doc))
 		SqlString runId,                // a run identifier for logging (can be a string for grouping or a unique identifier). Guid is used if not provide
-		SqlString settingsFile,         // path for a custom FastTransfer_Settings.json file, for custom logging
-		SqlBoolean debug				// for debugging purpose, if true, the FastTransfer_Settings.json file is created in the current directory with the default settings
-		)
+		SqlString settingsFile,         // path for a custom FastTransfer_Settings.json file, for custom logging		
+		SqlBoolean debug,               // for debugging purpose, if true, the FastTransfer_Settings.json file is created in the current directory with the default settings
+		SqlString license              // license key file or url for FastTransfer (optional, can be null or empty if not required)
+			)
 		
 		{
 			// --------------------------------------------------------------------
@@ -230,6 +236,8 @@ namespace FastWrapper
 			string settingsFileVal = settingsFile.IsNull ? null : settingsFile.Value.Trim();
 
 			bool debugVal = !debug.IsNull && debug.Value ? true : false;
+			// If license is provided, it can be null or empty if not required
+			string licenseVal = license.IsNull ? null : license.Value.Trim();
 
 
 			// --------------------------------------------------------------------
@@ -559,6 +567,12 @@ namespace FastWrapper
 				args += $" --settingsfile {Q(settingsFileVal)}";
 			}
 
+			// License (optional)
+			if (!string.IsNullOrEmpty(licenseVal))
+			{
+				args += $" --license {Q(licenseVal)}";
+			}
+
 			// Trim leading space
 			args = args.Trim();
 
@@ -586,8 +600,11 @@ namespace FastWrapper
 				UseShellExecute = false, // maybe true ?
 				RedirectStandardOutput = true,
 				RedirectStandardError = true,
-				CreateNoWindow = true
+				CreateNoWindow = true,
 			};
+
+			
+
 
 			try
 			{

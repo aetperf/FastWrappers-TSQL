@@ -30,7 +30,8 @@
 	@mapmethod [nvarchar](50) = 'Position',
 	@runId [nvarchar](255) = NULL,
 	@settingsFile [nvarchar](4000) = NULL,
-	@debug [bit] = 0
+	@debug [bit] = 0,
+	@license nvarchar(4000) = NULL
 WITH EXECUTE AS CALLER
 AS
 EXTERNAL NAME [FastWrappers_TSQL].[FastWrapper.FastTransferCLR].[RunFastTransfer_Secure]
