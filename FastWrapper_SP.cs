@@ -618,15 +618,18 @@ namespace FastWrapper
 					proc.WaitForExit();
 					int exitCode = proc.ExitCode;
 
-					// Send the output back to the SQL client
-					if (!string.IsNullOrEmpty(stdout))
+					if (debugVal)
 					{
-						// Diviser la sortie en morceaux de 4000 caractères
-						int chunkSize = 4000;
-						for (int i = 0; i < stdout.Length; i += chunkSize)
+						// Send the output back to the SQL client
+						if (!string.IsNullOrEmpty(stdout))
 						{
-							string chunk = stdout.Substring(i, Math.Min(chunkSize, stdout.Length - i));
-							SqlContext.Pipe.Send(chunk);
+							// Diviser la sortie en morceaux de 4000 caractères
+							int chunkSize = 4000;
+							for (int i = 0; i < stdout.Length; i += chunkSize)
+							{
+								string chunk = stdout.Substring(i, Math.Min(chunkSize, stdout.Length - i));
+								SqlContext.Pipe.Send(chunk);
+							}
 						}
 					}
 					// Extract some metrics from the end of the stdout (last 3000 characters) and search for 
