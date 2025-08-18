@@ -119,6 +119,7 @@ namespace FastWrapper
 				targetPassword = KeyProvider.AesDecrypt((string)targetPasswordSecure);
 			}
 
+			// use try catch to manage error and cancellation from client
 
 			RunFastTransferInternal(
 			fastTransferDir,
@@ -601,7 +602,7 @@ namespace FastWrapper
 				UseShellExecute = false, // maybe true ?
 				RedirectStandardOutput = true,
 				RedirectStandardError = true,
-				CreateNoWindow = true,
+				CreateNoWindow = true,				
 			};
 
 			
@@ -611,6 +612,8 @@ namespace FastWrapper
 			{
 				using (Process proc = Process.Start(psi))
 				{
+					
+					
 					// Read output by 
 					string stdout = proc.StandardOutput.ReadToEnd();
 					string stderr = proc.StandardError.ReadToEnd();
