@@ -65,3 +65,6 @@ EXEC dbo.xp_RunFastTransfer_secure
      @mapmethod = 'Name',
      @runId = N'CLRWrap_Run_ORA2MS_20250328'
 ```
+
+## Nota :
+You must have a valid trial or a valid FastTransfer.exe (or FastTransfer binary for linux) into the directory you specified with @fastTransferDir. The sql server service user must have read/execute provilege on the directory and FastTransfer(.exe) file
