@@ -11,7 +11,7 @@ Samples usage :
 ```TSQL
 -- use SELECT [dbo].[EncryptString]('<YourPassWordToEncrypt>') to get the encrypted password
 EXEC dbo.xp_RunFastTransfer_secure
-     @fastTransferDir='C:\FastTransfert\win-x64\latest',
+     @fastTransferDir='C:\FastTransfert\win-x64\latest\',
      @sourceConnectionType = N'mssql',
      @sourceServer = N'localhost',
      @sourceUser = N'FastUser',
@@ -40,7 +40,7 @@ EXEC dbo.xp_RunFastTransfer_secure
 -- use SELECT [dbo].[EncryptString]('<YourPassWordToEncrypt>') to get the encrypted password
 
 EXEC dbo.xp_RunFastTransfer_secure
-	@fastTransferDir = 'C:\FastTransfer\win-x64\latest',
+	@fastTransferDir = 'C:\FastTransfer\win-x64\latest\',
     @sourceConnectionType = 'mssql',
 	@sourceServer = 'localhost',
 	@sourceUser = 'FastUser',
