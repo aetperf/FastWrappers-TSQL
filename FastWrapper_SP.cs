@@ -154,7 +154,7 @@ namespace FastWrapper
 			runId,
 			settingsFile,			
 			debug,
-			license: null // license is not used in this method, but can be passed if needed
+			license 
 			);
 		}
 
