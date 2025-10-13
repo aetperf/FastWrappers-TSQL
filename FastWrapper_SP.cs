@@ -82,7 +82,8 @@ namespace FastWrapper
 			SqlBoolean debug,
 
 			// 8) License (optional, can be null or empty if not required
-			SqlString license
+			SqlString license,
+			SqlString loglevel
 
 		)
 		{
@@ -154,7 +155,8 @@ namespace FastWrapper
 			runId,
 			settingsFile,			
 			debug,
-			license 
+			license,
+			loglevel
 			);
 		}
 
@@ -191,7 +193,8 @@ namespace FastWrapper
 		SqlString runId,                // a run identifier for logging (can be a string for grouping or a unique identifier). Guid is used if not provide
 		SqlString settingsFile,         // path for a custom FastTransfer_Settings.json file, for custom logging		
 		SqlBoolean debug,               // for debugging purpose, if true, the FastTransfer_Settings.json file is created in the current directory with the default settings
-		SqlString license              // license key file or url for FastTransfer (optional, can be null or empty if not required)
+		SqlString license,              // license key file or url for FastTransfer (optional, can be null or empty if not required)
+		SqlString loglevel				// optional, can be "error", "warning", "information", "debug" (default is "information")
 			)
 		
 		{
@@ -240,6 +243,20 @@ namespace FastWrapper
 			bool debugVal = !debug.IsNull && debug.Value ? true : false;
 			// If license is provided, it can be null or empty if not required
 			string licenseVal = license.IsNull ? null : license.Value.Trim();
+
+			// Default loglevel to "information"
+			string loglevelVal = "information";
+			// If provided, validate loglevel
+			if (!loglevel.IsNull)
+			{
+				string loglevelInput = loglevel.Value.Trim().ToLowerInvariant();
+				string[] validLogLevels = { "error", "warning", "information", "debug" };
+				if (Array.IndexOf(validLogLevels, loglevelInput) < 0)
+				{
+					throw new ArgumentException($"Invalid loglevel: '{loglevelInput}'. Use 'error', 'warning', 'information', or 'debug'. WARNING the parameter is Case Sensitive");
+				}
+				loglevelVal = loglevelInput;
+			}
 
 
 			// --------------------------------------------------------------------
@@ -573,6 +590,12 @@ namespace FastWrapper
 			if (!string.IsNullOrEmpty(licenseVal))
 			{
 				args += $" --license {Q(licenseVal)}";
+			}
+
+			// Loglevel
+			if (!string.IsNullOrEmpty(loglevelVal))
+			{
+				args += $" --loglevel {Q(loglevelVal)}";
 			}
 
 			// Trim leading space
