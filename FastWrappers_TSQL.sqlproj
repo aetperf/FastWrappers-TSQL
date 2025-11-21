@@ -78,7 +78,7 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="FastWrapper_SP.cs" />
+    <Compile Include="FastTransferWrapper_SP.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="KeyProvider.cs" />
   </ItemGroup>
