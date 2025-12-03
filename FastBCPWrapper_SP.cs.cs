@@ -19,13 +19,13 @@ namespace FastWrapper
 			// Connection infosa
 			SqlString connectionType,          // clickhouse;hana;msoledbsql;mssql;mysql;nzcopy;nzoledb;nzsql;odbc;oledb;oraodp;pgcopy;pgsql;teradata
 			SqlString sourceConnectStringEnc,  // chiffré (Base64) ; exclusif avec DSN/Provider/Server/User/Password/Trusted/Database
-			SqlString dsn,                     // DSN (exclusif avec Provider/Server)
-			SqlString provider,                // OleDB provider (MSOLEDBSQL, NZOLEDB, …)
-			SqlString server,                  // Server | Server\Instance | Server:Port
-			SqlString user,                    // facultatif si Trusted
-			SqlString passwordEnc,             // chiffré (Base64) ; exclusif avec Trusted
+			SqlString sourcedsn,                     // DSN (exclusif avec Provider/Server)
+			SqlString sourceprovider,                // OleDB sourceprovider (MSOLEDBSQL, NZOLEDB, …)
+			SqlString sourceserver,                  // Server | Server\Instance | Server:Port
+			SqlString sourceuser,                    // facultatif si Trusted
+			SqlString sourcepasswordEnc,             // chiffré (Base64) ; exclusif avec Trusted
 			SqlBoolean trusted,                // exclusif avec User/Password
-			SqlString database,                // obligatoire si pas de connectstring
+			SqlString sourcedatabase,          // obligatoire si pas de connectstring
 
 			// Sources infos
 			SqlString inputFile,               // -F fileinput (optionnel) – exclusif avec query
@@ -75,19 +75,19 @@ namespace FastWrapper
 			if (!string.IsNullOrEmpty(connectStringEnc))
 				connectString = KeyProvider.AesDecrypt(connectStringEnc);
 
-			string dsnVal = dsn.IsNull ? null : dsn.Value.Trim();
-			string providerVal = provider.IsNull ? null : provider.Value.Trim();
-			string serverVal = server.IsNull ? null : server.Value.Trim();
+			string dsnVal = sourcedsn.IsNull ? null : sourcedsn.Value.Trim();
+			string providerVal = sourceprovider.IsNull ? null : sourceprovider.Value.Trim();
+			string serverVal = sourceserver.IsNull ? null : sourceserver.Value.Trim();
 
-			string userVal = user.IsNull ? null : user.Value.Trim();
-			string passwordEncVal = passwordEnc.IsNull ? null : passwordEnc.Value.Trim();
+			string userVal = sourceuser.IsNull ? null : sourceuser.Value.Trim();
+			string passwordEncVal = sourcepasswordEnc.IsNull ? null : sourcepasswordEnc.Value.Trim();
 			string passwordVal = null;
 			if (!string.IsNullOrEmpty(passwordEncVal))
 				passwordVal = KeyProvider.AesDecrypt(passwordEncVal);
 
 			bool trustedVal = !trusted.IsNull && trusted.Value;
 
-			string databaseVal = database.IsNull ? null : database.Value.Trim();
+			string databaseVal = sourcedatabase.IsNull ? null : sourcedatabase.Value.Trim();
 
 			string inputFileVal = inputFile.IsNull ? null : inputFile.Value.Trim();
 			string queryVal = query.IsNull ? null : query.Value.Trim();
@@ -145,27 +145,27 @@ namespace FastWrapper
 
 			// DistinctGroupsCertification("A","U,X") → Trusted XOR (User or Password)
 			if (trustedVal && (!string.IsNullOrEmpty(userVal) || !string.IsNullOrEmpty(passwordVal)))
-				throw new ArgumentException("trusted cannot be used together with user/password.");
+				throw new ArgumentException("trusted cannot be used together with sourceuser/password.");
 			if (!trustedVal && (string.IsNullOrEmpty(userVal) || string.IsNullOrEmpty(passwordVal)) && string.IsNullOrEmpty(connectString))
-				throw new ArgumentException("When not trusted and no connectstring, user and password are required.");
+				throw new ArgumentException("When not trusted and no connectstring, sourceuser and password are required.");
 
-			// Exclusivity connectstring vs (dsn/provider/server/user/password/trusted/database)
+			// Exclusivity connectstring vs (sourcedsn/sourceprovider/sourceserver/sourceuser/password/trusted/sourcedatabase)
 			if (!string.IsNullOrEmpty(connectString))
 			{
 				if (!string.IsNullOrEmpty(dsnVal) || !string.IsNullOrEmpty(providerVal) || !string.IsNullOrEmpty(serverVal) ||
 					!string.IsNullOrEmpty(userVal) || !string.IsNullOrEmpty(passwordVal) || trustedVal || !string.IsNullOrEmpty(databaseVal))
 				{
-					throw new ArgumentException("sourceconnectstring is exclusive with dsn/provider/server/user/password/trusted/database.");
+					throw new ArgumentException("sourceconnectstring is exclusive with sourcedsn/sourceprovider/sourceserver/sourceuser/password/trusted/sourcedatabase.");
 				}
 			}
 			else
 			{
-				// mandatory database parameter
+				// mandatory sourcedatabase parameter
 				if (string.IsNullOrEmpty(databaseVal))
-					throw new ArgumentException("database is required when sourceconnectstring is not provided.");
+					throw new ArgumentException("sourcedatabase is required when sourceconnectstring is not provided.");
 				// DSN ou Server/Provider doivent couvrir la connectivité
 				if (string.IsNullOrEmpty(dsnVal) && string.IsNullOrEmpty(serverVal))
-					throw new ArgumentException("Either dsn or server must be provided (when not using sourceconnectstring).");
+					throw new ArgumentException("Either sourcedsn or sourceserver must be provided (when not using sourceconnectstring).");
 			}
 
 			// ArgumentGroupCertification("F,q", OneOrNoneUsed) → fileinput XOR query (ou aucun des deux)
@@ -198,7 +198,7 @@ namespace FastWrapper
 			if (!string.IsNullOrEmpty(connType))
 				args.Append(" --connectiontype ").Append(Q(connType));
 
-			// connectstring VS dsn/provider/server/user/password/trusted/database
+			// connectstring VS sourcedsn/sourceprovider/sourceserver/sourceuser/password/trusted/sourcedatabase
 			if (!string.IsNullOrEmpty(connectString))
 			{
 				args.Append(" --sourceconnectstring ").Append(Q(connectString));
@@ -370,7 +370,7 @@ namespace FastWrapper
 					}
 
 					string source = "";
-					// check if query is used then try if inputfile else database.schema.table
+					// check if query is used then try if inputfile else sourcedatabase.schema.table
 					if (!string.IsNullOrEmpty(queryVal))
 					{
 						source = queryVal;

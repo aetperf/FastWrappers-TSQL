@@ -66,5 +66,72 @@ EXEC dbo.xp_RunFastTransfer_secure
      @runId = N'CLRWrap_Run_ORA2MS_20250328'
 ```
 
+### Export one table to a csv file mono thread 
+```TSQL
+-- use SELECT [dbo].[EncryptString]('<YourPassWordToEncrypt>') to get the encrypted password
+
+EXEC dbo.xp_RunFastBCP_secure
+   @fastBCPDir = 'D:\FastBCP\latest',
+   @connectionType = 'mssql',
+   @sourceserver = 'localhost',
+   @sourceuser = 'FastUser',
+   @sourceschema = 'dbo',
+   @sourcetable = 'orders',
+   @sourcepasswordSecure = 'wi1/VHz9s+fp45186iLYYQ==',
+   @sourcedatabase = 'tpch',
+   @query = 'SELECT top 1000 * FROM orders',
+   @outputFile = 'orders_output.csv',
+   @outputDirectory = 'D:\temp\fastbcpoutput\{sourcedatabase}\{sourceschema}\{sourcetable}',
+   @delimiter = '|',
+   @usequotes = 1,
+   @dateformat = 'yyyy-MM-dd HH24:mm:ss',
+   @encoding = 'utf-8',
+   @method = 'None',
+   @runid = 'test_FastBCP_export_orders'
+```
+
+### Export one table to 8 parquet files using 8 threads 
+```TSQL
+-- use SELECT [dbo].[EncryptString]('<YourPassWordToEncrypt>') to get the encrypted password
+EXEC dbo.xp_RunFastBCP_secure
+   @fastBCPDir = 'D:\FastBCP\latest',
+   @connectionType = 'mssql',
+   @sourceserver = 'localhost',
+   @sourceuser = 'FastUser',
+   @sourceschema = 'dbo',
+   @sourcetable = 'orders_15M',
+   @sourcepasswordSecure = 'wi1/VHz9s+fp45186iLYYQ==',
+   @sourcedatabase = 'tpch10_collation_bin2',
+   @outputFile = 'orders_output.parquet',
+   @outputDirectory = 'D:\temp\fastbcpoutput\{sourcedatabase}\{sourceschema}\{sourcetable}',
+   @method = 'Ntile',
+   @distributeKeyColumn = 'o_orderkey',    
+   @degree = 8,
+   @mergeDistributedFile = 0
+   ```
+
+
+### Export one table several csv files (one file by month) using 8 threads 
+```TSQL
+-- use SELECT [dbo].[EncryptString]('<YourPassWordToEncrypt>') to get the encrypted password
+EXEC dbo.xp_RunFastBCP_secure
+   @fastBCPDir = 'D:\FastBCP\latest',
+   @connectionType = 'mssql',
+   @sourceserver = 'localhost',
+   @sourceuser = 'FastUser',
+   @sourceschema = 'dbo',
+   @sourcetable = 'orders_15M',
+   @sourcepasswordSecure = 'wi1/VHz9s+fp45186iLYYQ==',
+   @sourcedatabase = 'tpch10_collation_bin2',
+   @query = 'SELECT * FROM (SELECT *, year(o_orderdate)*100+month(o_orderdate) o_ordermonth from orders_15M) src',
+   @outputFile = 'orders_output.csv',
+   @outputDirectory = 'D:\temp\fastbcpoutput\{sourcedatabase}\{sourceschema}\{sourcetable}',
+   @method = 'DataDriven',
+   @distributeKeyColumn = 'o_ordermonth',    
+   @degree = 8,
+   @mergeDistributedFile = 0
+   ```
+
+
 ## Nota :
 You must have a valid trial or a valid FastTransfer.exe (or FastTransfer binary for linux) into the directory you specified with @fastTransferDir. The sql server service user must have read/execute provilege on the directory and FastTransfer(.exe) file
