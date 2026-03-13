@@ -1,0 +1,116 @@
+name: Create Release Artifacts
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+jobs:
+  build-and-release:
+    runs-on: windows-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v2
+      
+      - name: Setup NuGet
+        uses: nuget/setup-nuget@v2
+      
+      - name: Restore NuGet packages
+        run: nuget restore FastWrappers-TSQL.sln
+      
+      - name: Build SQL Project
+        run: msbuild FastWrappers_TSQL.sqlproj /p:Configuration=Release /p:Platform="Any CPU"
+      
+      - name: Setup SQL Server (LocalDB)
+        shell: powershell
+        run: |
+          # Start SQL LocalDB
+          sqllocaldb create MSSQLLocalDB
+          sqllocaldb start MSSQLLocalDB
+          
+          # Wait for SQL Server to be ready
+          Start-Sleep -Seconds 10
+      
+      - name: Deploy Database and Create Artifacts
+        shell: powershell
+        run: |
+          # Variables
+          $serverInstance = "(localdb)\MSSQLLocalDB"
+          $dbName = "FastWrappers-TSQL"
+          $dacpacPath = "bin\Release\FastWrappers_TSQL.dacpac"
+          $bacpacPath = "bin\Release\FastWrappers-TSQL.bacpac"
+          $bakPath = "bin\Release\FastWrappers-TSQL.bak"
+          
+          # Download SqlPackage if needed
+          if (!(Test-Path "SqlPackage\SqlPackage.exe")) {
+              Write-Host "Downloading SqlPackage..."
+              Invoke-WebRequest -Uri "https://aka.ms/sqlpackage-windows" -OutFile "SqlPackage.zip"
+              Expand-Archive -Path "SqlPackage.zip" -DestinationPath "SqlPackage"
+          }
+          
+          $sqlPackage = "SqlPackage\SqlPackage.exe"
+          
+          # Deploy the DACPAC to create the database
+          Write-Host "Deploying DACPAC to create database..."
+          & $sqlPackage /Action:Publish /SourceFile:$dacpacPath /TargetServerName:$serverInstance /TargetDatabaseName:$dbName /p:IncludeCompositeObjects=True
+          
+          # Wait for deployment to complete
+          Start-Sleep -Seconds 5
+          
+          # Export to BACPAC
+          Write-Host "Exporting to BACPAC..."
+          & $sqlPackage /Action:Export /SourceServerName:$serverInstance /SourceDatabaseName:$dbName /TargetFile:$bacpacPath
+          
+          # Create .bak file with compatibility level for SQL Server 2016
+          Write-Host "Creating SQL Server 2016 compatible backup..."
+          sqlcmd -S $serverInstance -Q "ALTER DATABASE [$dbName] SET COMPATIBILITY_LEVEL = 130; BACKUP DATABASE [$dbName] TO DISK = N'$PWD\$bakPath' WITH COMPRESSION, STATS = 10"
+          
+          # Generate SQL script from DACPAC (includes the compiled binary)
+          Write-Host "Generating SQL script from DACPAC..."
+          $generatedSqlPath = "bin\Release\FastWrappers-TSQL.sql"
+          & $sqlPackage /Action:Script /SourceFile:$dacpacPath /OutputPath:$generatedSqlPath /p:IncludeCompositeObjects=True
+          
+          # Copy DACPAC with proper name
+          Write-Host "Copying DACPAC with release name..."
+          Copy-Item $dacpacPath "bin\Release\FastWrappers-TSQL.dacpac"
+          
+          Write-Host "All artifacts created successfully!"
+      
+      - name: Get version from tag
+        id: get_version
+        shell: bash
+        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+      
+      - name: Create Release
+        id: create_release
+        uses: softprops/action-gh-release@v1
+        with:
+          name: Release v${{ steps.get_version.outputs.VERSION }}
+          body: |
+            ## FastWrappers-TSQL v${{ steps.get_version.outputs.VERSION }}
+            
+            ### Installation Methods
+            
+            This release provides multiple installation options:
+            
+            - **FastWrappers-TSQL.dacpac** - Data-tier Application Package (recommended for Visual Studio / SQL Server Data Tools)
+            - **FastWrappers-TSQL.bacpac** - Binary Application Package (for import/export between servers)
+            - **FastWrappers-TSQL.bak** - SQL Server Backup (compatible with SQL Server 2016+, restore using SSMS)
+            - **FastWrappers-TSQL.sql** - Pure SQL Script (execute using sqlcmd or SSMS)
+            
+            ### Usage
+            
+            See [README.md](https://github.com/${{ github.repository }}/blob/main/README.md) for usage examples.
+          files: |
+            bin/Release/FastWrappers-TSQL.dacpac
+            bin/Release/FastWrappers-TSQL.bacpac
+            bin/Release/FastWrappers-TSQL.bak
+            bin/Release/FastWrappers-TSQL.sql
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

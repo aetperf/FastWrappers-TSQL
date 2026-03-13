@@ -5,6 +5,28 @@ As a reminder :
 - **FastTransfer** is a CLI that allow import from file or transfer data between databases using streaming and parallel mecanism for high performance
 - **FastBCP** is a CLI that allow to export data from databases to files (csv, parquet, json,bson and excel) using streaming and parallel mecanism for high performance
 
+## Installation
+
+Download the latest release from the [Releases page](https://github.com/aetperf/FastWrappers-TSQL/releases). Each release provides 4 installation options:
+
+1. **FastWrappers-TSQL.dacpac** - Data-tier Application Package (recommended for Visual Studio / SQL Server Data Tools)
+2. **FastWrappers-TSQL.bacpac** - Binary Application Package (for import/export between servers)
+3. **FastWrappers-TSQL.bak** - SQL Server Backup file (compatible with SQL Server 2016+, restore using SSMS)
+4. **FastWrappers-TSQL.sql** - Pure SQL Script (execute using sqlcmd or SSMS)
+
+## Creating a New Release
+
+To create a new release:
+
+1. Update the version number in [Properties/AssemblyInfo.cs](Properties/AssemblyInfo.cs)
+2. Commit your changes
+3. Create and push a new tag:
+   ```bash
+   git tag v0.3.3
+   git push origin v0.3.3
+   ```
+4. The GitHub Actions workflow will automatically build and create a release with all installation artifacts
+
 Samples usage :
 
 ### Copy one table using 12 threads between two MSSQL instances 
