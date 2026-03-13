@@ -1,61 +1,61 @@
 # Release Workflow
 
-Ce workflow GitHub Actions automatise la création de releases pour le projet FastWrappers-TSQL.
+This GitHub Actions workflow automates the creation of releases for the FastWrappers-TSQL project.
 
-## Déclenchement
+## Trigger
 
-Le workflow se déclenche automatiquement lors de la création d'un nouveau tag commençant par `v` (ex: `v0.3.3`).
+The workflow is automatically triggered when creating a new tag starting with `v` (e.g., `v0.3.3`).
 
-## Artefacts Générés
+## Generated Artifacts
 
-Le workflow génère 4 types d'artefacts pour différentes méthodes d'installation :
+The workflow generates 4 types of artifacts for different installation methods:
 
 1. **FastWrappers-TSQL.dacpac** - Data-tier Application Package
-   - Recommandé pour Visual Studio / SQL Server Data Tools
-   - Permet un déploiement contrôlé avec détection de drift
+   - Recommended for Visual Studio / SQL Server Data Tools
+   - Enables controlled deployment with drift detection
 
 2. **FastWrappers-TSQL.bacpac** - Binary Application Package
-   - Pour l'import/export entre serveurs
-   - Contient le schéma + l'assembly compilé
+   - For import/export between servers
+   - Contains the schema + compiled assembly
 
-3. **FastWrappers-TSQL.bak** - Backup SQL Server
-   - Compatible SQL Server 2016+ (Compatibility Level 130)
-   - Restauration directe via SSMS ou T-SQL
+3. **FastWrappers-TSQL.bak** - SQL Server Backup
+   - Compatible with SQL Server 2016+ (Compatibility Level 130)
+   - Direct restore via SSMS or T-SQL
 
-4. **FastWrappers-TSQL.sql** - Script SQL pur
-   - Exécutable via sqlcmd ou SSMS
-   - **Généré automatiquement depuis le DACPAC avec le binaire à jour**
-   - Contient l'assembly compilé en format hexadécimal inline
+4. **FastWrappers-TSQL.sql** - Pure SQL Script
+   - Executable via sqlcmd or SSMS
+   - **Automatically generated from DACPAC with up-to-date binary**
+   - Contains the compiled assembly in inline hexadecimal format
 
-## Processus de Build
+## Build Process
 
-1. **Checkout** du code source
-2. **Configuration** de MSBuild et NuGet
-3. **Build** du projet SQL en mode Release
-4. **Déploiement** temporaire sur SQL LocalDB
-5. **Génération** des artefacts :
+1. **Checkout** source code
+2. **Setup** MSBuild and NuGet
+3. **Build** SQL project in Release mode
+4. **Deploy** temporarily to SQL LocalDB
+5. **Generate** artifacts:
    - BACPAC via SqlPackage export
-   - BAK via BACKUP DATABASE (avec compression)
-   - DACPAC copié depuis bin/Release
-   - **SQL script généré depuis le DACPAC (contient le binaire compilé à jour)**
-6. **Création** de la release GitHub avec tous les artefacts
+   - BAK via BACKUP DATABASE (with compression)
+   - DACPAC copied from bin/Release
+   - **SQL script generated from DACPAC (contains up-to-date compiled binary)**
+6. **Create** GitHub release with all artifacts
 
-## Comment Créer une Nouvelle Release
+## How to Create a New Release
 
-### 1. Mettre à jour la version
+### 1. Update the Version
 
-Modifier [Properties/AssemblyInfo.cs](../Properties/AssemblyInfo.cs) :
+Edit [Properties/AssemblyInfo.cs](../Properties/AssemblyInfo.cs):
 ```csharp
 [assembly: AssemblyVersion("0.3.3.0")]
 [assembly: AssemblyFileVersion("0.3.3.0")]
 ```
 
-Optionnel : Mettre à jour [FastWrappers_TSQL.sqlproj](../FastWrappers_TSQL.sqlproj) :
+Optional: Update [FastWrappers_TSQL.sqlproj](../FastWrappers_TSQL.sqlproj):
 ```xml
 <DacVersion>0.3.3.0</DacVersion>
 ```
 
-### 2. Commit et Tag
+### 2. Commit and Tag
 
 ```bash
 git add Properties/AssemblyInfo.cs
@@ -65,25 +65,25 @@ git push origin main
 git push origin v0.3.3
 ```
 
-### 3. Vérifier la Release
+### 3. Verify the Release
 
-1. Aller sur https://github.com/aetperf/FastWrappers-TSQL/actions
-2. Vérifier que le workflow "Create Release Artifacts" s'exécute
-3. Une fois terminé, vérifier la release sur https://github.com/aetperf/FastWrappers-TSQL/releases
+1. Go to https://github.com/aetperf/FastWrappers-TSQL/actions
+2. Check that the "Create Release Artifacts" workflow is running
+3. Once completed, verify the release at https://github.com/aetperf/FastWrappers-TSQL/releases
 
-## Dépannage
+## Troubleshooting
 
-### Le workflow échoue lors du build
+### Workflow fails during build
 
-- Vérifier que le projet compile localement en mode Release
-- Vérifier les dépendances NuGet
+- Verify that the project compiles locally in Release mode
+- Check NuGet dependencies
 
-### SqlPackage ne trouve pas l'assembly
+### SqlPackage cannot find the assembly
 
-- Vérifier que le DACPAC est correctement généré dans `bin/Release/`
-- Vérifier que le fichier est signé (AetPCLRSign.pfx.snk)
+- Verify that the DACPAC is correctly generated in `bin/Release/`
+- Verify that the file is signed (AetPCLRSign.pfx.snk)
 
-### Le backup échoue
+### Backup fails
 
-- SQL LocalDB peut nécessiter plus de temps pour démarrer
-- Augmenter le `Start-Sleep` après le démarrage de LocalDB
+- SQL LocalDB may need more time to start
+- Increase the `Start-Sleep` after LocalDB startup
