@@ -26,6 +26,7 @@ namespace FastWrapper
 			SqlString sourcepasswordEnc,             // chiffré (Base64) ; exclusif avec Trusted
 			SqlBoolean trusted,                // exclusif avec User/Password
 			SqlString sourcedatabase,          // obligatoire si pas de connectstring
+			SqlString applicationintent,       // ReadOnly (default) | ReadWrite (SQL Server & OLEDB only)
 
 			// Sources infos
 			SqlString inputFile,               // -F fileinput (optionnel) – exclusif avec query
@@ -43,10 +44,11 @@ namespace FastWrapper
 			SqlString dateformat,              // -f (default "yyyy-MM-dd")
 			SqlString encoding,                // -e (default "UTF-8")
 			SqlString decimalseparator,        // -n (default ",")
+			SqlString parquetcompression,      // zstd;none;snappy;gzip;lzo;lz4 (default zstd)
 
 			// Parallel options
 			SqlInt32 degree,                   // -p (Default -2)
-			SqlString method,                  // -m (Random;DataDriven;Ctid;Physloc;Rowid;RangeId;Ntile;None) (Default None)
+			SqlString method,                  // -m (Random;DataDriven;Ctid;Physloc;Rowid;RangeId;Ntile;Timepartition;None) (Default None)
 			SqlString distributeKeyColumn,     // -c
 			SqlString datadrivenquery,         // -Q (optionnel)
 			SqlBoolean mergeDistributedFile,   // -M (bool) default True
@@ -57,9 +59,11 @@ namespace FastWrapper
 			SqlString boolformat,              // -b automatic;true/false;1/0;t/f;
 			SqlString runid,                   // -R
 			SqlString settingsfile,            // -l (default FastBCP_Settings.json)
+			SqlString config,                  // --config (YAML config file)
 			SqlString cloudprofile,            // --cloudprofile
 			SqlString license,                 // --license | --licence
 			SqlString loglevel,                 // --loglevel Information|Debug|Verbose
+			SqlBoolean nobanner,               // --nobanner (suppress banner)
 			SqlBoolean debug                   // --debug (output stdout to SQL client)
 		)
 		{
@@ -88,6 +92,7 @@ namespace FastWrapper
 			bool trustedVal = !trusted.IsNull && trusted.Value;
 
 			string databaseVal = sourcedatabase.IsNull ? null : sourcedatabase.Value.Trim();
+			string applicationintentVal = applicationintent.IsNull ? null : applicationintent.Value.Trim();
 
 			string inputFileVal = inputFile.IsNull ? null : inputFile.Value.Trim();
 			string queryVal = query.IsNull ? null : query.Value.Trim();
@@ -102,6 +107,7 @@ namespace FastWrapper
 			string datefmtVal = dateformat.IsNull ? null : dateformat.Value.Trim();
 			string encodingVal = encoding.IsNull ? null : encoding.Value.Trim();
 			string decSepVal = decimalseparator.IsNull ? null : decimalseparator.Value.Trim();
+			string parquetcompressionVal = parquetcompression.IsNull ? null : parquetcompression.Value.Trim();
 
 			int? degreeVal = degree.IsNull ? (int?)null : degree.Value;
 			string methodVal = method.IsNull ? null : method.Value.Trim();
@@ -114,9 +120,11 @@ namespace FastWrapper
 			string boolfmtVal = boolformat.IsNull ? null : boolformat.Value.Trim();
 			string runidVal = runid.IsNull ? null : runid.Value.Trim();
 			string settingsVal = settingsfile.IsNull ? null : settingsfile.Value.Trim();
+			string configVal = config.IsNull ? null : config.Value.Trim();
 			string cloudProfVal = cloudprofile.IsNull ? null : cloudprofile.Value.Trim();
 			string licenseVal = license.IsNull ? null : license.Value.Trim();
 			string loglevelVal = loglevel.IsNull ? null : loglevel.Value.Trim();
+			bool nobannerVal = !nobanner.IsNull && nobanner.Value;
 			bool debugVal = !debug.IsNull && debug.Value ? true : false;
 
 			// -----------------------------
@@ -226,6 +234,18 @@ namespace FastWrapper
 					args.Append(" --sourcedatabase ").Append(Q(databaseVal));
 			}
 
+			// application intent (SQL Server & OLEDB only)
+			if (!string.IsNullOrEmpty(applicationintentVal) && 
+				(connType == "mssql" || connType == "oledb" || connType == "msoledbsql"))
+			{
+				string normalizedApplicationIntent = applicationintentVal.Trim();
+				if (string.Equals(normalizedApplicationIntent, "ReadOnly", StringComparison.OrdinalIgnoreCase) ||
+				    string.Equals(normalizedApplicationIntent, "ReadWrite", StringComparison.OrdinalIgnoreCase))
+				{
+					args.Append(" --applicationintent ").Append(Q(normalizedApplicationIntent));
+				}
+			}
+
 			// decimal separator
 			if (!string.IsNullOrEmpty(decSepVal))
 				args.Append(" --decimalseparator ").Append(Q(decSepVal));
@@ -253,6 +273,10 @@ namespace FastWrapper
 			if (!string.IsNullOrEmpty(encodingVal))
 				args.Append(" --encoding ").Append(Q(encodingVal));
 
+			// parquet compression
+			if (!string.IsNullOrEmpty(parquetcompressionVal))
+				args.Append(" --parquetcompression ").Append(Q(parquetcompressionVal));
+
 			// Parallel options
 			if (degreeVal.HasValue)
 				args.Append(" --paralleldegree ").Append(degreeVal.Value);
@@ -274,12 +298,16 @@ namespace FastWrapper
 				args.Append(" --runid ").Append(Q(runidVal));
 			if (!string.IsNullOrEmpty(settingsVal))
 				args.Append(" --settingsfile ").Append(Q(settingsVal));
+			if (!string.IsNullOrEmpty(configVal))
+				args.Append(" --config ").Append(Q(configVal));
 			if (!string.IsNullOrEmpty(cloudProfVal))
 				args.Append(" --cloudprofile ").Append(Q(cloudProfVal));
 			if (!string.IsNullOrEmpty(licenseVal))
 				args.Append(" --license ").Append(Q(licenseVal));
 			if (!string.IsNullOrEmpty(loglevelVal))
 				args.Append(" --loglevel ").Append(Q(loglevelVal));
+			if (nobannerVal)
+				args.Append(" --nobanner");
 
 			string argLine = args.ToString().Trim();
 

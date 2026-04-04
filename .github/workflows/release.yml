@@ -1,0 +1,259 @@
+name: Create Release Artifacts
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+jobs:
+  build-and-release:
+    runs-on: windows-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v2
+      
+      - name: Setup NuGet
+        uses: nuget/setup-nuget@v2
+      
+      - name: Restore NuGet packages
+        run: nuget restore FastWrappers-TSQL.sln
+      
+      - name: Build SQL Project
+        run: msbuild FastWrappers_TSQL.sqlproj /p:Configuration=Release /p:Platform="Any CPU" /t:Build
+      
+      - name: Verify Build Artifacts
+        shell: powershell
+        run: |
+          Write-Host "Checking for build output..."
+          if (Test-Path "bin") {
+            Get-ChildItem -Path "bin" -Recurse -File | Format-Table FullName, Length
+          } else {
+            Write-Host "bin folder does not exist!"
+          }
+          
+          # Check for DACPAC in bin\Output (SQL Projects output here)
+          $dacpacPath = "bin\Output\FastWrappers_TSQL.dacpac"
+          if (Test-Path $dacpacPath) {
+            Write-Host "DACPAC found at: $dacpacPath"
+          } else {
+            Write-Host "DACPAC not found at: $dacpacPath"
+            Write-Host "Looking for .dacpac files..."
+            Get-ChildItem -Path . -Filter "*.dacpac" -Recurse -ErrorAction SilentlyContinue | Format-Table FullName
+            exit 1
+          }
+      
+      - name: Setup SQL Server (LocalDB)
+        shell: powershell
+        run: |
+          # Ensure SQL LocalDB instance exists
+          sqllocaldb info MSSQLLocalDB > $null 2>&1
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "MSSQLLocalDB instance not found. Creating..."
+            sqllocaldb create MSSQLLocalDB
+          } else {
+            Write-Host "MSSQLLocalDB instance already exists."
+          }
+
+          # Ensure SQL LocalDB is started
+          sqllocaldb start MSSQLLocalDB
+          
+          # Wait for SQL Server to be ready
+          Start-Sleep -Seconds 10
+      
+      - name: Deploy Database and Create Artifacts
+        shell: powershell
+        run: |
+          # Variables
+          $serverInstance = "(localdb)\MSSQLLocalDB"
+          $dbName = "FastWrappers-TSQL"
+          $dacpacPath = "bin\Output\FastWrappers_TSQL.dacpac"
+          $outputDir = "bin\Release"
+          $bakPath = "$outputDir\FastWrappers-TSQL.bak"
+          $generatedSqlPath = "$outputDir\FastWrappers-TSQL.sql"
+          $templateSqlPath = "FastWrappers-TSQL.sql"
+          
+          # Ensure output directory exists
+          if (!(Test-Path $outputDir)) {
+              Write-Host "Creating $outputDir directory..."
+              New-Item -Path $outputDir -ItemType Directory -Force | Out-Null
+          }
+          
+          # Verify DACPAC exists
+          if (!(Test-Path $dacpacPath)) {
+              Write-Error "DACPAC not found at: $dacpacPath"
+              exit 1
+          }
+          
+          # Download SqlPackage if needed
+          if (!(Test-Path "SqlPackage\SqlPackage.exe")) {
+              Write-Host "Downloading SqlPackage..."
+              Invoke-WebRequest -Uri "https://aka.ms/sqlpackage-windows" -OutFile "SqlPackage.zip"
+              Expand-Archive -Path "SqlPackage.zip" -DestinationPath "SqlPackage" -Force
+              Remove-Item "SqlPackage.zip"
+          }
+          
+          $sqlPackage = "SqlPackage\SqlPackage.exe"
+          
+          # Deploy the DACPAC to create the database
+          Write-Host "Deploying DACPAC to create database..."
+          & $sqlPackage /Action:Publish /SourceFile:$dacpacPath /TargetServerName:$serverInstance /TargetDatabaseName:$dbName /p:IncludeCompositeObjects=True
+          
+          if ($LASTEXITCODE -ne 0) {
+              Write-Error "Failed to deploy DACPAC"
+              exit 1
+          }
+          
+          # Wait for deployment to complete
+          Start-Sleep -Seconds 5
+          
+          # Test the assembly
+          Write-Host "Testing assembly..."
+          $testResult = sqlcmd -S $serverInstance -d $dbName -Q "SELECT dbo.EncryptString('test') AS Result" 2>&1
+          
+          if ($LASTEXITCODE -eq 0) {
+              Write-Host "Assembly test successful!"
+              Write-Host $testResult
+          } else {
+              Write-Warning "Assembly test failed: $testResult"
+              Write-Warning "Continuing with artifact creation..."
+          }
+          
+          # Create backup file
+          Write-Host "Creating SQL Server backup..."
+          $bakFullPath = Join-Path $PWD $bakPath
+          sqlcmd -S $serverInstance -Q "BACKUP DATABASE [$dbName] TO DISK = N'$bakFullPath' WITH STATS = 10"
+          
+          if ($LASTEXITCODE -ne 0) {
+              Write-Warning "Failed to create BAK file, continuing..."
+          }
+          
+          # Generate SQL script with current assembly binary
+          Write-Host "Generating SQL script with assembly binary..."
+          
+          # Extract assembly binary from deployed database using SqlClient (no size limitations)
+          $connectionString = "Server=$serverInstance;Database=$dbName;Integrated Security=True;TrustServerCertificate=True;"
+          $connection = New-Object System.Data.SqlClient.SqlConnection($connectionString)
+          $connection.Open()
+          
+          $command = $connection.CreateCommand()
+          $command.CommandText = "SELECT content FROM sys.assembly_files WHERE assembly_id = (SELECT assembly_id FROM sys.assemblies WHERE name = 'FastWrappers_TSQL')"
+          
+          $reader = $command.ExecuteReader()
+          $assemblyHex = $null
+          
+          if ($reader.Read()) {
+              $bytes = $reader.GetSqlBytes(0).Value
+              $hexString = [System.BitConverter]::ToString($bytes) -replace '-',''
+              $assemblyHex = "0x$hexString"
+              Write-Host "Assembly binary extracted (length: $($assemblyHex.Length) chars, $($bytes.Length) bytes)"
+          }
+          
+          $reader.Close()
+          $connection.Close()
+          
+          if ($assemblyHex) {
+              # Read template and inject assembly binary
+              $sqlTemplate = Get-Content $templateSqlPath -Raw
+              $finalSql = $sqlTemplate -replace '__ASSEMBLY_FROM_0X__', $assemblyHex
+              $finalSql | Out-File -FilePath $generatedSqlPath -Encoding UTF8
+              Write-Host "SQL script generated successfully"
+          } else {
+              Write-Warning "Failed to extract assembly binary"
+          }
+          
+          # List all created artifacts
+          Write-Host "`nCreated artifacts:"
+          Get-ChildItem -Path $outputDir -File | Format-Table Name, Length
+          
+          Write-Host "All artifacts processing completed!"
+      
+      - name: Get version from tag
+        id: get_version
+        shell: bash
+        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+      
+      - name: Prepare Release Files
+        shell: powershell
+        run: |
+          # Create a release directory with all available artifacts
+          New-Item -Path "release" -ItemType Directory -Force | Out-Null
+          
+          # Copy available files
+          $files = @(
+              @{Source="bin\Release\FastWrappers-TSQL.bak"; Name="FastWrappers-TSQL.bak"},
+              @{Source="bin\Release\FastWrappers-TSQL.sql"; Name="FastWrappers-TSQL.sql"}
+          )
+          
+          foreach ($file in $files) {
+              if (Test-Path $file.Source) {
+                  Copy-Item $file.Source "release\$($file.Name)" -Force
+                  Write-Host "Copied $($file.Name)"
+              } else {
+                  Write-Warning "$($file.Name) not found, skipping"
+              }
+          }
+          
+          Write-Host "`nRelease files:"
+          Get-ChildItem -Path "release" | Format-Table Name, Length
+      
+      - name: Create Release
+        id: create_release
+        uses: softprops/action-gh-release@v1
+        with:
+          name: Release v${{ steps.get_version.outputs.VERSION }}
+          body: |
+            ## FastWrappers-TSQL v${{ steps.get_version.outputs.VERSION }}
+            
+            ### Installation Files
+            
+            - **FastWrappers-TSQL.bak** - SQL Server Backup (restore using SSMS)
+            - **FastWrappers-TSQL.sql** - SQL Script (execute using sqlcmd or SSMS)
+            
+            ### Installation
+            
+            **Option 1: Restore from backup (.bak file)**
+            ```sql
+            -- Restore database
+            RESTORE DATABASE [FastWrappers-TSQL] FROM DISK = 'FastWrappers-TSQL.bak';
+            GO
+            
+            -- Enable TRUSTWORTHY and CLR
+            ALTER DATABASE [FastWrappers-TSQL] SET TRUSTWORTHY ON;
+            GO
+            
+            EXEC sp_configure 'show advanced options', 1;
+            RECONFIGURE;
+            EXEC sp_configure 'clr enabled', 1;
+            RECONFIGURE;
+            GO
+            
+            -- IMPORTANT: Change database owner to 'sa' 
+            -- Required for signed UNSAFE assemblies to load properly
+            USE [FastWrappers-TSQL];
+            GO
+            EXEC sp_changedbowner 'sa';
+            GO
+            
+            -- Test
+            SELECT dbo.EncryptString('test');
+            ```
+            
+            **Option 2: Execute SQL Script (.sql file)**
+            ```sql
+            -- Simply execute the script in SSMS or using sqlcmd
+            sqlcmd -S YourServer -i FastWrappers-TSQL.sql
+            ```
+            
+            ### Usage
+            
+            See [README.md](https://github.com/${{ github.repository }}/blob/main/README.md) for examples.
+          files: |
+            release/*
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

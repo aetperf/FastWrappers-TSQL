@@ -55,13 +55,16 @@ CREATE PROCEDURE [dbo].[xp_RunFastTransfer_secure]
 	@targetTable [nvarchar](255),
 	@loadMode [nvarchar](50),
 	@batchSize [int] = 1048576,
+	@useWorkTables [bit] = 0,
 	@method [nvarchar](50) = 'None',
 	@distributeKeyColumn [nvarchar](255) = NULL,
+	@dataDrivenQuery [nvarchar](4000) = NULL,
 	@degree [int] = 4,
 	@mapmethod [nvarchar](50) = 'Position',
 	@runId [nvarchar](255) = NULL,
 	@settingsFile [nvarchar](4000) = NULL,
 	@debug [bit] = 0,
+	@noBanner [bit] = 0,
 	@license nvarchar(4000) = NULL,
 	@loglevel nvarchar(50) = 'information'
 WITH EXECUTE AS CALLER

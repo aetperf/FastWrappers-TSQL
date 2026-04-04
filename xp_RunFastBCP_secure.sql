@@ -86,6 +86,7 @@ CREATE PROCEDURE [dbo].[xp_RunFastBCP_secure]
 @sourcepasswordSecure [nvarchar](255) = NULL,
 @isTrusted [bit] = 0,
 @sourcedatabase [nvarchar](1000),
+@applicationintent [nvarchar](20) = 'ReadOnly',
 @inputFile [nvarchar](1000) = NULL,
 @query [nvarchar](4000) = NULL,
 @sourceschema [nvarchar](255) = NULL,
@@ -97,6 +98,7 @@ CREATE PROCEDURE [dbo].[xp_RunFastBCP_secure]
 @dateformat [nvarchar](25) = NULL,
 @encoding [nvarchar](50) = NULL,
 @decimalSeparator [nvarchar](1) = NULL,
+@parquetcompression [nvarchar](20) = 'zstd',
 @degree [int] = -2,
 @method [nvarchar](50) = 'None',
 @distributeKeyColumn [nvarchar](1000) = NULL,
@@ -107,9 +109,11 @@ CREATE PROCEDURE [dbo].[xp_RunFastBCP_secure]
 @boolformat [nvarchar](10) = NULL,
 @runid [nvarchar](255) = NULL,
 @settingsfile [nvarchar](4000) = NULL,
+@config [nvarchar](4000) = NULL,
 @cloudprofile [nvarchar](2000) = NULL,
 @license nvarchar(4000) = NULL,
 @loglevel nvarchar(50) = 'Information',
+@nobanner [bit] = 0,
 @debug [bit] = 0
 WITH EXECUTE AS CALLER
 AS

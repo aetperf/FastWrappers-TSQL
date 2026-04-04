@@ -69,10 +69,12 @@ namespace FastWrapper
 			SqlString targetTable,
 			SqlString loadMode,
 			SqlInt32 batchSize,
+			SqlBoolean useWorkTables,
 
 			// 6) Advanced
 			SqlString method,
 			SqlString distributeKeyColumn,
+			SqlString dataDrivenQuery,
 			SqlInt32 degree,
 			SqlString mapMethod,
 
@@ -80,6 +82,7 @@ namespace FastWrapper
 			SqlString runId,
 			SqlString settingsFile,
 			SqlBoolean debug,
+			SqlBoolean noBanner,
 
 			// 8) License (optional, can be null or empty if not required
 			SqlString license,
@@ -148,13 +151,16 @@ namespace FastWrapper
 			targetTable,
 			loadMode,
 			batchSize,
+			useWorkTables,
 			method,
 			distributeKeyColumn,
+			dataDrivenQuery,
 			degree,
 			mapMethod,
 			runId,
 			settingsFile,			
 			debug,
+			noBanner,
 			license,
 			loglevel
 			);
@@ -186,13 +192,16 @@ namespace FastWrapper
 		SqlString targetTable,          // Mandatory. eg "CopyTable"
 		SqlString loadMode,             // "Append" or "Truncate"
 		SqlInt32 batchSize,             // e.g. 130000
-		SqlString method,               // distribution method for parallelism :"None", "Random", "DataDriven", "RangeId", "Ntile", "Ctid", "Rowid"
+		SqlBoolean useWorkTables,       // use staging work tables before final insert
+		SqlString method,               // distribution method for parallelism :"None", "Random", "DataDriven", "RangeId", "Ntile", "Ctid", "Rowid", "Physloc", "NZDataSlice"
 		SqlString distributeKeyColumn,  // required if method in ["Random","DataDriven","RangeId","Ntile"]
+		SqlString dataDrivenQuery,      // custom query for DataDriven method returning distinct values for distribution
 		SqlInt32 degree,                // concurrency degree if method != "None" useless if method = "None" should be != 1, can be less than 0 for dynamic degree (based on cpucount on the platform where FastTransfer is running. -2 = CpuCount/2)
 		SqlString mapMethod,            // "Position"(default) or "Name" (Automatic mapping of columns based on names (case insensitive) with tolerance on the order of columns. Non present columns in source or target are ignored. Name may mot be available for all target types (see doc))
 		SqlString runId,                // a run identifier for logging (can be a string for grouping or a unique identifier). Guid is used if not provide
 		SqlString settingsFile,         // path for a custom FastTransfer_Settings.json file, for custom logging		
 		SqlBoolean debug,               // for debugging purpose, if true, the FastTransfer_Settings.json file is created in the current directory with the default settings
+		SqlBoolean noBanner,            // suppress FastTransfer banner and version information at startup
 		SqlString license,              // license key file or url for FastTransfer (optional, can be null or empty if not required)
 		SqlString loglevel				// optional, can be "error", "warning", "information", "debug" (default is "information")
 			)
@@ -231,17 +240,20 @@ namespace FastWrapper
 			string tgtTableVal = targetTable.IsNull ? null : targetTable.Value.Trim();
 			string loadModeVal = loadMode.IsNull ? null : loadMode.Value.Trim();
 			int? batchSizeVal = batchSize.IsNull ? (int?)null : batchSize.Value;
+		bool useWorkTablesVal = !useWorkTables.IsNull && useWorkTables.Value;
 
-			string methodVal = method.IsNull ? null : method.Value.Trim();
-			string distKeyColVal = distributeKeyColumn.IsNull ? null : distributeKeyColumn.Value.Trim();
-			int? degreeVal = degree.IsNull ? (int?)null : degree.Value;
-			string mapMethodVal = mapMethod.IsNull ? null : mapMethod.Value.Trim();
+		string methodVal = method.IsNull ? null : method.Value.Trim();
+		string distKeyColVal = distributeKeyColumn.IsNull ? null : distributeKeyColumn.Value.Trim();
+		string dataDrivenQueryVal = dataDrivenQuery.IsNull ? null : dataDrivenQuery.Value.Trim();
+		int? degreeVal = degree.IsNull ? (int?)null : degree.Value;
+		string mapMethodVal = mapMethod.IsNull ? null : mapMethod.Value.Trim();
 
-			string runIdVal = runId.IsNull ? null : runId.Value.Trim();
-			string settingsFileVal = settingsFile.IsNull ? null : settingsFile.Value.Trim();
+		string runIdVal = runId.IsNull ? null : runId.Value.Trim();
+		string settingsFileVal = settingsFile.IsNull ? null : settingsFile.Value.Trim();
 
-			bool debugVal = !debug.IsNull && debug.Value ? true : false;
-			// If license is provided, it can be null or empty if not required
+		bool debugVal = !debug.IsNull && debug.Value ? true : false;
+		bool noBannerVal = !noBanner.IsNull && noBanner.Value;
+		// If license is provided, it can be null or empty if not required
 			string licenseVal = license.IsNull ? null : license.Value.Trim();
 
 			// Default loglevel to "information"
@@ -382,10 +394,10 @@ namespace FastWrapper
 			bool hasMethod = !string.IsNullOrEmpty(methodVal);
 			if (hasMethod)
 			{
-				string[] validMethods = { "None", "Random", "DataDriven", "RangeId", "Ntile", "Ctid", "Rowid" , "NZDataSlice" };
+				string[] validMethods = { "None", "Random", "DataDriven", "RangeId", "Ntile", "Ctid", "Rowid", "Physloc", "NZDataSlice" };
 				if (Array.IndexOf(validMethods, methodVal) < 0)
 				{
-					throw new ArgumentException($"Invalid method: '{methodVal}'. use 'None', 'Random', 'DataDriven', 'RangeId', 'Ntile', 'NZDataSlice', 'Ctid' or 'Rowid'. WARNING the parameter is Case Sensitive");
+					throw new ArgumentException($"Invalid method: '{methodVal}'. use 'None', 'Random', 'DataDriven', 'RangeId', 'Ntile', 'Ctid', 'Rowid', 'Physloc' or 'NZDataSlice'. WARNING the parameter is Case Sensitive");
 				}
 
 				if (!methodVal.Equals("None"))
@@ -551,6 +563,10 @@ namespace FastWrapper
 			{
 				args += $" --batchsize {batchSizeVal.Value}";
 			}
+			if (useWorkTablesVal)
+			{
+				args += " --useworktables";
+			}
 
 			// Advanced Parameters
 			if (hasMethod)
@@ -571,52 +587,56 @@ namespace FastWrapper
 					args += $" --degree {degreeVal.Value}";
 				}
 			}
-			if (hasMapMethod)
-			{
-				args += $" --mapmethod {Q(mapMethodVal)}";
-			}
+		if (!string.IsNullOrEmpty(dataDrivenQueryVal))
+		{
+			args += $" --datadrivenquery {Q(dataDrivenQueryVal)}";
+		}
+		if (hasMapMethod)
+		{
+			args += $" --mapmethod {Q(mapMethodVal)}";
+		}
 
-			// Log Parameters
-			if (!string.IsNullOrEmpty(runIdVal))
-			{
-				args += $" --runid {Q(runIdVal)}";
-			}
-			if (!string.IsNullOrEmpty(settingsFileVal))
-			{
-				args += $" --settingsfile {Q(settingsFileVal)}";
-			}
+		// Log Parameters
+		if (!string.IsNullOrEmpty(runIdVal))
+		{
+			args += $" --runid {Q(runIdVal)}";
+		}
+		if (!string.IsNullOrEmpty(settingsFileVal))
+		{
+			args += $" --settingsfile {Q(settingsFileVal)}";
+		}
 
-			// License (optional)
-			if (!string.IsNullOrEmpty(licenseVal))
-			{
-				args += $" --license {Q(licenseVal)}";
-			}
+		// License (optional)
+		if (!string.IsNullOrEmpty(licenseVal))
+	{
+		args += $" --license {Q(licenseVal)}";
+	}
 
-			// Loglevel
-			if (!string.IsNullOrEmpty(loglevelVal))
-			{
-				args += $" --loglevel {Q(loglevelVal)}";
-			}
+	// Loglevel
+	if (!string.IsNullOrEmpty(loglevelVal))
+	{
+		args += $" --loglevel {Q(loglevelVal)}";
+	}
+	if (noBannerVal)
+	{
+		args += " --nobanner";
+	}
 
-			// Trim leading space
-			args = args.Trim();
+	// Trim leading space
+	args = args.Trim();
 
-			//args4Log : for logging purpose, remove password or passwd info in the args string using regexp
-			string args4Log = args;
-			args4Log = System.Text.RegularExpressions.Regex.Replace(args4Log, @"--sourcepassword\s+""[^""]*""", "--sourcepassword \"<hidden>\"");
-			args4Log = System.Text.RegularExpressions.Regex.Replace(args4Log, @"--targetpassword\s+""[^""]*""", "--targetpassword \"<hidden>\"");
-			args4Log = System.Text.RegularExpressions.Regex.Replace(args4Log, @"--sourceconnectstring\s+""[^""]*""", "--sourceconnectstring \"<hidden>\"");
-			args4Log = System.Text.RegularExpressions.Regex.Replace(args4Log, @"--targetconnectstring\s+""[^""]*""", "--targetconnectstring \"<hidden>\"");
+	//args4Log : for logging purpose, remove password or passwd info in the args string using regexp
+	string args4Log = args;
+	args4Log = System.Text.RegularExpressions.Regex.Replace(args4Log, @"--sourcepassword\s+""[^""]*""", "--sourcepassword \"<hidden>\"");
+	args4Log = System.Text.RegularExpressions.Regex.Replace(args4Log, @"--targetpassword\s+""[^""]*""", "--targetpassword \"<hidden>\"");
+	args4Log = System.Text.RegularExpressions.Regex.Replace(args4Log, @"--sourceconnectstring\s+""[^""]*""", "--sourceconnectstring \"<hidden>\"");
+	args4Log = System.Text.RegularExpressions.Regex.Replace(args4Log, @"--targetconnectstring\s+""[^""]*""", "--targetconnectstring \"<hidden>\"");
 
-
-			if (debugVal)
-			{			
-				//print the command line exe and args
-				SqlContext.Pipe.Send("FastTransfer Command " + exePath + " " + args4Log + Environment.NewLine);				
-			}
-
-			// --------------------------------------------------------------------
-			// 4. Execute the CLI
+	if (debugVal)
+	{			
+		//print the command line exe and args
+		SqlContext.Pipe.Send("FastTransfer Command " + exePath + " " + args4Log + Environment.NewLine);				
+	}
 			// --------------------------------------------------------------------
 			ProcessStartInfo psi = new ProcessStartInfo
 			{
