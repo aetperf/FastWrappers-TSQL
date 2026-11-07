@@ -1,4 +1,4 @@
-﻿-- Samples for FastWrappers-TSQL 1.2.0 (validated with FastTransfer 0.18.2 and FastBCP 1.6.7)
+-- Samples for FastWrappers-TSQL 1.2.0 (validated with FastTransfer 0.18.2 and FastBCP 1.6.7)
 -- Run them one at a time.
 
 -- use SELECT [dbo].[EncryptString]('<YourPassWordToEncrypt>') to get the encrypted password
@@ -31,7 +31,7 @@ EXEC dbo.xp_RunFastTransfer_secure
 	@degree = 12,
 	@mapmethod = 'Name',
 	@runId = 'test_MSSQL_to_MSSQL_P12_RangeId',
-	@license = 'D:\FastTransfer\TRIAL-FastTransfer-20261107174316-2c1d76.lic'
+	@license = 'D:\FastTransfer\latest\FastTransfer.lic'
 GO
 
 -- Import a csv file with DuckDB streaming (no source database, no source credentials)
@@ -48,7 +48,7 @@ EXEC dbo.xp_RunFastTransfer_secure
 	@targetTable = 'orders_3',
 	@loadmode = 'Truncate',
 	@runId = 'test_CSV_to_MSSQL',
-	@license = 'D:\FastTransfer\TRIAL-FastTransfer-20261107174316-2c1d76.lic'
+	@license = 'D:\FastTransfer\latest\FastTransfer.lic'
 GO
 
 -- =====================================================================
@@ -68,7 +68,7 @@ EXEC dbo.xp_RunFastBCP_secure
 	@outputDirectory = 'D:\temp\fastbcpoutput\{sourcedatabase}\{sourcetable}',
 	@dateformat = 'yyyy-MM-dd HH:mm:ss',
 	@runid = 'test_FastBCP_MSSQL_to_CSV',
-	@license = 'D:\FastBCP\latest\FastBCP_AetP.lic'
+	@license = 'D:\FastBCP\latest\FastBCP.lic'
 GO
 
 -- Export the dbo.orders table to several parquet files, using 8 threads
@@ -86,7 +86,7 @@ EXEC dbo.xp_RunFastBCP_secure
 	@distributeKeyColumn = 'o_orderkey',
 	@degree = 8,
 	@runid = 'test_FastBCP_MSSQL_to_Parquet_P8_RangeId',
-	@license = 'D:\FastBCP\latest\FastBCP_AetP.lic'
+	@license = 'D:\FastBCP\latest\FastBCP.lic'
 GO
 
 -- Export a table straight from a SQL Server backup, without restoring it (parquet only, method None or Physical)
@@ -103,7 +103,7 @@ EXEC dbo.xp_RunFastBCP_secure
 	@method = 'Physical',
 	@degree = 8,
 	@runid = 'test_FastBCP_Backup_to_Parquet',
-	@license = 'D:\FastBCP\latest\FastBCP_AetP.lic'
+	@license = 'D:\FastBCP\latest\FastBCP.lic'
 GO
 
 -- Export a table straight from an Oracle RMAN backup set (parquet only, method None or Physical)
@@ -119,5 +119,5 @@ EXEC dbo.xp_RunFastBCP_secure
 	@method = 'Physical',
 	@degree = 8,
 	@runid = 'test_FastBCP_RMAN_to_Parquet',
-	@license = 'D:\FastBCP\latest\FastBCP_AetP.lic'
+	@license = 'D:\FastBCP\latest\FastBCP.lic'
 GO
