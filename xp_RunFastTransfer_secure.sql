@@ -1,9 +1,11 @@
 ﻿/*
+Wrapper for FastTransfer (FastWrappers-TSQL 1.2.0, validated with FastTransfer 0.18.2)
+
 Sample usage
 -- use SELECT [dbo].[EncryptString]('<YourPassWordToEncrypt>') to get the encrypted password
 
 EXEC dbo.xp_RunFastTransfer_secure
-	@fastTransferDir = 'D:\FastTransfer\',
+	@fastTransferDir = 'D:\FastTransfer\latest',
     @sourceConnectionType = 'mssql',
 	@sourceServer = 'localhost',
 	@sourceUser = 'FastUser',
@@ -33,24 +35,24 @@ CREATE PROCEDURE [dbo].[xp_RunFastTransfer_secure]
 	@fastTransferDir [nvarchar](max),
 	@sourceConnectionType [nvarchar](30),
 	@sourceConnectStringSecure [nvarchar](4000) = NULL,
-	@sourceServer [nvarchar](255),
+	@sourceServer [nvarchar](255) = NULL,
 	@sourceDSN [nvarchar](255) = NULL,
 	@sourceProvider [nvarchar](1000) = NULL,
 	@isSourceTrusted [bit] = 0,
 	@sourceUser [nvarchar](1000) = NULL,
 	@sourcePasswordSecure [nvarchar](255) = NULL,
-	@sourceDatabase [nvarchar](1000),
+	@sourceDatabase [nvarchar](1000) = NULL,
 	@fileInput [nvarchar](4000) = NULL,
 	@query [nvarchar](4000) = NULL,
 	@sourceSchema [nvarchar](255) = NULL,
 	@sourceTable [nvarchar](255) = NULL,
 	@targetConnectionType [nvarchar](30),
 	@targetConnectStringSecure [nvarchar](4000) = NULL,
-	@targetServer [nvarchar](255),
+	@targetServer [nvarchar](255) = NULL,
 	@isTargetTrusted [bit] = 0,
 	@targetUser [nvarchar](1000) = NULL,
 	@targetPasswordSecure [nvarchar](255) = NULL,
-	@targetDatabase [nvarchar](255),
+	@targetDatabase [nvarchar](255) = NULL,
 	@targetSchema [nvarchar](255),
 	@targetTable [nvarchar](255),
 	@loadMode [nvarchar](50),
