@@ -22,10 +22,10 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup MSBuild
-        uses: microsoft/setup-msbuild@v2
+        uses: microsoft/setup-msbuild@v3
 
       - name: Build SQL Project
         run: msbuild FastWrappers_TSQL.sqlproj /p:Configuration=Release /p:Platform="Any CPU" /t:Build
@@ -63,7 +63,7 @@ jobs:
           -MaxDatabaseVersion 904
 
       - name: Upload the packages
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: FastWrappers-TSQL-packages
           path: |
@@ -81,13 +81,13 @@ jobs:
 
     steps:
       - name: Download the packages
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: FastWrappers-TSQL-packages
           path: release
 
       - name: Create the GitHub release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           name: FastWrappers-TSQL ${{ github.ref_name }}
           fail_on_unmatched_files: true
