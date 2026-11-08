@@ -1,4 +1,5 @@
-﻿
+﻿-- Wrapper for FastBCP (FastWrappers-TSQL 1.2.0, validated with FastBCP 1.6.7)
+
 -- Sample usage of the xp_RunFastBCP_secure stored procedure
 -- EXEC dbo.xp_RunFastBCP_secure
 --     @fastBCPDir = 'D:\FastBCP\latest',
@@ -71,6 +72,20 @@
 --     @distributeKeyColumn = 'o_ordermonth',
 --     @runid = 'test_FastBCP_export_orders',
 --     @debug=1
+
+-- Export a table straight from a SQL Server backup file, without restoring it (parquet only, method None or Physical)
+-- EXEC dbo.xp_RunFastBCP_secure
+--     @fastBCPDir = 'D:\FastBCP\latest',
+--     @connectionType = 'backup_mssql',
+--     @sourceserver = 'D:\Backups\MSSQL',
+--     @sourcedatabase = 'tpch_full.bak',
+--     @sourceschema = 'dbo',
+--     @sourcetable = 'orders',
+--     @outputFile = 'orders.parquet',
+--     @outputDirectory = 'D:\temp\fastbcpoutput\orders',
+--     @method = 'Physical',
+--     @degree = 8,
+--     @runid = 'test_FastBCP_export_orders_from_backup'
 
 
 

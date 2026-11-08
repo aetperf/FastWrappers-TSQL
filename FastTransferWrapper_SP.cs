@@ -319,15 +319,19 @@ namespace FastWrapper
 				{
 					throw new ArgumentException("Must provide either sourceServer or sourceDSN if sourceConnectString is NULL.");
 				}
-				if (string.IsNullOrEmpty(srcDatabaseVal))
+				// DuckDB sources: the server is the .duckdb file or :memory: (no database, no credentials)
+				if (srcConnType != "duckdb" && srcConnType != "duckdbstream")
 				{
-					throw new ArgumentException("Must provide sourceDatabase when not using sourceConnectString.");
-				}
-				if (!srcTrusted)
-				{
-					if (string.IsNullOrEmpty(srcUserVal) || string.IsNullOrEmpty(srcPasswordVal))
+					if (string.IsNullOrEmpty(srcDatabaseVal))
 					{
-						throw new ArgumentException("Must provide sourceUser and sourcePassword when sourceTrusted = 0.");
+						throw new ArgumentException("Must provide sourceDatabase when not using sourceConnectString.");
+					}
+					if (!srcTrusted)
+					{
+						if (string.IsNullOrEmpty(srcUserVal) || string.IsNullOrEmpty(srcPasswordVal))
+						{
+							throw new ArgumentException("Must provide sourceUser and sourcePassword when sourceTrusted = 0.");
+						}
 					}
 				}
 			}
@@ -372,15 +376,19 @@ namespace FastWrapper
 				{
 					throw new ArgumentException("Must provide targetServer if targetConnectString is NULL.");
 				}
-				if (string.IsNullOrEmpty(tgtDatabaseVal))
+				// DuckDB target: the server is the .duckdb file (no database, no credentials)
+				if (tgtConnType != "duckdb")
 				{
-					throw new ArgumentException("Must provide targetDatabase if targetConnectString is NULL.");
-				}
-				if (!tgtTrusted)
-				{
-					if (string.IsNullOrEmpty(tgtUserVal) || string.IsNullOrEmpty(tgtPasswordVal))
+					if (string.IsNullOrEmpty(tgtDatabaseVal))
 					{
-						throw new ArgumentException("Must provide targetUser and targetPassword when targetTrusted = 0.");
+						throw new ArgumentException("Must provide targetDatabase if targetConnectString is NULL.");
+					}
+					if (!tgtTrusted)
+					{
+						if (string.IsNullOrEmpty(tgtUserVal) || string.IsNullOrEmpty(tgtPasswordVal))
+						{
+							throw new ArgumentException("Must provide targetUser and targetPassword when targetTrusted = 0.");
+						}
 					}
 				}
 			}
@@ -508,10 +516,20 @@ namespace FastWrapper
 				}
 				else
 				{
-					args += $" --sourceuser {Q(srcUserVal)} --sourcepassword {Q(srcPasswordVal)}";
+					if (!string.IsNullOrEmpty(srcUserVal))
+					{
+						args += $" --sourceuser {Q(srcUserVal)}";
+					}
+					if (!string.IsNullOrEmpty(srcPasswordVal))
+					{
+						args += $" --sourcepassword {Q(srcPasswordVal)}";
+					}
 				}
 
-				args += $" --sourcedatabase {Q(srcDatabaseVal)}";
+				if (!string.IsNullOrEmpty(srcDatabaseVal))
+				{
+					args += $" --sourcedatabase {Q(srcDatabaseVal)}";
+				}
 			}
 
 			// Source Infos
@@ -549,10 +567,20 @@ namespace FastWrapper
 				}
 				else
 				{
-					args += $" --targetuser {Q(tgtUserVal)} --targetpassword {Q(tgtPasswordVal)}";
+					if (!string.IsNullOrEmpty(tgtUserVal))
+					{
+						args += $" --targetuser {Q(tgtUserVal)}";
+					}
+					if (!string.IsNullOrEmpty(tgtPasswordVal))
+					{
+						args += $" --targetpassword {Q(tgtPasswordVal)}";
+					}
 				}
 
-				args += $" --targetdatabase {Q(tgtDatabaseVal)}";
+				if (!string.IsNullOrEmpty(tgtDatabaseVal))
+				{
+					args += $" --targetdatabase {Q(tgtDatabaseVal)}";
+				}
 			}
 
 			// Target Infos
@@ -639,7 +667,8 @@ namespace FastWrapper
 	if (debugVal)
 	{			
 		//print the command line exe and args
-		SqlContext.Pipe.Send("FastTransfer Command " + exePath + " " + args4Log + Environment.NewLine);				
+		SqlContext.Pipe.Send($"FastWrappers-TSQL {WrapperVersions.Wrapper} (validated with FastTransfer {WrapperVersions.FastTransfer})" + Environment.NewLine);
+		SqlContext.Pipe.Send("FastTransfer Command " + exePath + " " + args4Log + Environment.NewLine);
 	}
 			// --------------------------------------------------------------------
 			ProcessStartInfo psi = new ProcessStartInfo

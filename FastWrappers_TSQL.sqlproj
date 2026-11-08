@@ -33,7 +33,7 @@
     <GenerateCreateScript>True</GenerateCreateScript>
     <DacDescription>procedures de wrapping pour FastTransfer et FastBCP</DacDescription>
     <TargetFrameworkProfile />
-    <DacVersion>2.0.0.0</DacVersion>
+    <DacVersion>1.2.0.0</DacVersion>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
     <OutputPath>bin\Release\</OutputPath>

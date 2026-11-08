@@ -1,89 +1,82 @@
-# Release Workflow
+# Build and Release Workflow
 
-This GitHub Actions workflow automates the creation of releases for the FastWrappers-TSQL project.
+[release.yml](release.yml) builds and validates the installation packages of FastWrappers-TSQL, and publishes them for each version.
 
-## Trigger
+## Triggers
 
-The workflow is automatically triggered when creating a new tag starting with `v` (e.g., `vx.y.z`).
+| Event | Packages validated | Workflow artifact | GitHub release |
+|---|---|---|---|
+| Pull request to `master` | Yes | Yes | No |
+| Push to `master` | Yes | Yes | No |
+| Tag `vX.Y.Z` or `X.Y.Z` | Yes | Yes | Yes |
 
-## Generated Artifacts
+## Packages
 
-The workflow generates 4 types of artifacts for different installation methods:
+| File | Description | SQL Server |
+|---|---|---|
+| **FastWrappers-TSQL.sql** | Self-contained script with the assembly in hexadecimal. Installs or upgrades, and can be replayed | 2017+ |
+| **FastWrappers-TSQL.bak** | Backup of the database, created with LocalDB 2019 | 2019+ |
+| **FastWrappers-TSQL.dacpac** | Data-tier package, to publish with SqlPackage or Visual Studio | 2017+ |
 
-1. **FastWrappers-TSQL.dacpac** - Data-tier Application Package
-   - Recommended for Visual Studio / SQL Server Data Tools
-   - Enables controlled deployment with drift detection
+## What is checked
 
-2. **FastWrappers-TSQL.bacpac** - Binary Application Package
-   - For import/export between servers
-   - Contains the schema + compiled assembly
+The logic is in [Build-Packages.ps1](../scripts/Build-Packages.ps1). Any failed check stops the workflow, so no release is published with a missing or broken package:
 
-3. **FastWrappers-TSQL.bak** - SQL Server Backup
-   - Compatible with SQL Server 2016+ (Compatibility Level 130)
-   - Direct restore via SSMS or T-SQL
+- the versions are aligned between the assembly, the project, the scripts, the README and the tag
+- the `.dacpac` deploys, and the deployed assembly is the built one
+- the `.bak` has a database version compatible with SQL Server 2019 (904)
+- the `.sql` upgrades a `.bak` / `.dacpac` installation, can be replayed (members of the roles and grants are kept), and installs on a server without the database
+- the `.bak` can be restored, with the logical file names given in the README
+- the CLR function `dbo.EncryptString` runs after each of these installations
 
-4. **FastWrappers-TSQL.sql** - Pure SQL Script
-   - Executable via sqlcmd or SSMS
-   - **Automatically generated from DACPAC with up-to-date binary**
-   - Contains the compiled assembly in inline hexadecimal format
-
-## Build Process
-
-1. **Checkout** source code
-2. **Setup** MSBuild and NuGet
-3. **Build** SQL project in Release mode
-4. **Deploy** temporarily to SQL LocalDB
-5. **Generate** artifacts:
-   - BACPAC via SqlPackage export
-   - BAK via BACKUP DATABASE (with compression)
-   - DACPAC copied from bin/Release
-   - **SQL script generated from DACPAC (contains up-to-date compiled binary)**
-6. **Create** GitHub release with all artifacts
+FastTransfer and FastBCP are not available on the runner: the procedures are created and the CLR assembly is loaded, but no transfer or export is run.
 
 ## How to Create a New Release
 
 ### 1. Update the Version
 
-Edit [Properties/AssemblyInfo.cs](../Properties/AssemblyInfo.cs):
+Edit `WrapperVersions` in [Properties/AssemblyInfo.cs](../../Properties/AssemblyInfo.cs). It sets the assembly version and the versions printed by the wrappers with `@debug = 1`:
 ```csharp
-[assembly: AssemblyVersion("x.y.z.0")]
-[assembly: AssemblyFileVersion("x.y.z.0")]
+public const string Wrapper = "x.y.z.0";
+public const string FastTransfer = "<validated FastTransfer version>";
+public const string FastBCP = "<validated FastBCP version>";
 ```
 
-Optional: Update [FastWrappers_TSQL.sqlproj](../FastWrappers_TSQL.sqlproj):
-```xml
-<DacVersion>x.y.z.0</DacVersion>
-```
+Then align the same version in:
+- [FastWrappers_TSQL.sqlproj](../../FastWrappers_TSQL.sqlproj): `<DacVersion>x.y.z.0</DacVersion>`
+- [FastWrappers-TSQL.sql](../../FastWrappers-TSQL.sql): script header and description of the trusted assembly
+- [xp_RunFastTransfer_secure.sql](../../xp_RunFastTransfer_secure.sql) and [xp_RunFastBCP_secure.sql](../../xp_RunFastBCP_secure.sql): header comments
+- [samples/samples.sql](../../samples/samples.sql): header comment
+- [README.md](../../README.md): compatibility table and description of the trusted assembly
 
-### 2. Commit and Tag
+### 2. Merge, then Tag
 
 ```bash
-git add Properties/AssemblyInfo.cs
-git commit -m "Bump version to x.y.z"
 git tag vx.y.z
-git push origin main
 git push origin vx.y.z
 ```
 
 ### 3. Verify the Release
 
-1. Go to https://github.com/aetperf/FastWrappers-TSQL/actions
-2. Check that the "Create Release Artifacts" workflow is running
-3. Once completed, verify the release at https://github.com/aetperf/FastWrappers-TSQL/releases
+1. Go to the **Actions** tab and check the "Build and Release Packages" workflow
+2. Once completed, the release with the 3 packages is in the **Releases** page
+
+## Running it Locally
+
+On a dedicated SQL Server instance (the script stops if the database exists, and it enables CLR):
+
+```powershell
+sqllocaldb create FWPackages -s
+msbuild FastWrappers_TSQL.sqlproj /p:Configuration=Release "/p:Platform=Any CPU" /t:Rebuild
+powershell -File .github\scripts\Build-Packages.ps1 -ServerInstance "(localdb)\FWPackages" -SqlPackage <path to SqlPackage.exe> -OutputDir <output directory> -MaxDatabaseVersion 0
+sqllocaldb stop FWPackages
+sqllocaldb delete FWPackages
+```
+
+`-MaxDatabaseVersion 0` disables the SQL Server 2019 check, for a local instance of another version.
 
 ## Troubleshooting
 
-### Workflow fails during build
-
-- Verify that the project compiles locally in Release mode
-- Check NuGet dependencies
-
-### SqlPackage cannot find the assembly
-
-- Verify that the DACPAC is correctly generated in `bin/Release/`
-- Verify that the file is signed (AetPCLRSign.pfx.snk)
-
-### Backup fails
-
-- SQL LocalDB may need more time to start
-- Increase the `Start-Sleep` after LocalDB startup
+- **Versions are not aligned**: the message names the file to update (see step 1).
+- **The tag does not match the version**: delete the tag, fix the version or the tag, and push it again.
+- **The `.bak` is not compatible with SQL Server 2019**: the LocalDB instance is not a 2019 one, check the "Setup SQL Server 2019 (LocalDB)" step.

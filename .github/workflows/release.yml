@@ -1,274 +1,109 @@
-name: Create Release Artifacts
+name: Build and Release Packages
 
+# Every push and pull request builds and validates the packages (kept as workflow artifacts).
+# A version tag (v1.2.0 or 1.2.0) also publishes them in a GitHub release.
 on:
   push:
+    branches:
+      - master
     tags:
-      - 'v*.*.*'
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+      - '[0-9]+.[0-9]+.[0-9]+'
+  pull_request:
+    branches:
+      - master
+
+permissions:
+  contents: read
 
 jobs:
-  build-and-release:
-    runs-on: windows-latest
-    
+  build:
+    runs-on: windows-2025
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-      
+
       - name: Setup MSBuild
         uses: microsoft/setup-msbuild@v2
-      
-      - name: Setup NuGet
-        uses: nuget/setup-nuget@v2
-      
-      - name: Restore NuGet packages
-        run: nuget restore FastWrappers-TSQL.sln
-      
+
       - name: Build SQL Project
         run: msbuild FastWrappers_TSQL.sqlproj /p:Configuration=Release /p:Platform="Any CPU" /t:Build
-      
-      - name: Verify Build Artifacts
-        shell: powershell
-        run: |
-          Write-Host "Checking for build output..."
-          if (Test-Path "bin") {
-            Get-ChildItem -Path "bin" -Recurse -File | Format-Table FullName, Length
-          } else {
-            Write-Host "bin folder does not exist!"
-          }
-          
-          # Check for DACPAC in bin\Output (SQL Projects output here)
-          $dacpacPath = "bin\Output\FastWrappers_TSQL.dacpac"
-          if (Test-Path $dacpacPath) {
-            Write-Host "DACPAC found at: $dacpacPath"
-          } else {
-            Write-Host "DACPAC not found at: $dacpacPath"
-            Write-Host "Looking for .dacpac files..."
-            Get-ChildItem -Path . -Filter "*.dacpac" -Recurse -ErrorAction SilentlyContinue | Format-Table FullName
-            exit 1
-          }
-      
+
       - name: Setup SQL Server 2019 (LocalDB)
         shell: powershell
         run: |
           # The .bak must be created with SQL Server 2019 (database version 904) to be restorable on SQL Server 2019+.
-          # windows-latest ships a newer LocalDB (2025 => version 998), so install LocalDB 2019 side by side.
-          Write-Host "Installed LocalDB versions:"
-          sqllocaldb versions
-          $has2019 = (sqllocaldb versions) -match '\(15\.0'
-          if (-not $has2019) {
-            Write-Host "Installing SQL Server 2019 LocalDB..."
-            Invoke-WebRequest -Uri "https://download.microsoft.com/download/7/c/1/7c14e92e-bdcb-4f89-b7cf-93543e7112d1/SqlLocalDB.msi" -OutFile "SqlLocalDB2019.msi"
-            Start-Process msiexec.exe -ArgumentList '/i','SqlLocalDB2019.msi','/qn','IACCEPTSQLLOCALDBLICENSETERMS=YES' -Wait
-            sqllocaldb versions
-          }
+          # The runner ships another LocalDB version, so install LocalDB 2019 side by side.
+          Invoke-WebRequest -Uri "https://download.microsoft.com/download/7/c/1/7c14e92e-bdcb-4f89-b7cf-93543e7112d1/SqlLocalDB.msi" -OutFile "SqlLocalDB2019.msi"
+          $install = Start-Process msiexec.exe -ArgumentList '/i','SqlLocalDB2019.msi','/qn','IACCEPTSQLLOCALDBLICENSETERMS=YES' -Wait -PassThru
+          if ($install.ExitCode -ne 0) { throw "LocalDB installation failed with exit code $($install.ExitCode)" }
 
-          sqllocaldb create FW2019 15.0 -s
-          if ($LASTEXITCODE -ne 0) { Write-Error "Failed to create LocalDB 2019 instance"; exit 1 }
-          sqllocaldb info FW2019
+          $localDb = Get-ChildItem 'C:\Program Files\Microsoft SQL Server\*\Tools\Binn\SqlLocalDB.exe' | Sort-Object FullName | Select-Object -Last 1
+          & $localDb.FullName versions
+          & $localDb.FullName create FW2019 15.0 -s
+          if ($LASTEXITCODE -ne 0) { throw "Failed to create the LocalDB 2019 instance" }
 
-          # Wait for SQL Server to be ready
-          Start-Sleep -Seconds 10
-          $v = sqlcmd -S "(localdb)\FW2019" -h -1 -Q "SET NOCOUNT ON; SELECT SERVERPROPERTY('ProductVersion')"
-          Write-Host "LocalDB version: $v"
-          if ("$v".Trim() -notlike '15.*') { Write-Error "LocalDB instance is not SQL Server 2019"; exit 1 }
-      
-      - name: Deploy Database and Create Artifacts
+      - name: Download SqlPackage
         shell: powershell
         run: |
-          # Variables
-          $serverInstance = "(localdb)\FW2019"
-          $dbName = "FastWrappers-TSQL"
-          $dacpacPath = "bin\Output\FastWrappers_TSQL.dacpac"
-          $outputDir = "bin\Release"
-          $bakPath = "$outputDir\FastWrappers-TSQL.bak"
-          $generatedSqlPath = "$outputDir\FastWrappers-TSQL.sql"
-          $templateSqlPath = "FastWrappers-TSQL.sql"
-          
-          # Ensure output directory exists
-          if (!(Test-Path $outputDir)) {
-              Write-Host "Creating $outputDir directory..."
-              New-Item -Path $outputDir -ItemType Directory -Force | Out-Null
-          }
-          
-          # Verify DACPAC exists
-          if (!(Test-Path $dacpacPath)) {
-              Write-Error "DACPAC not found at: $dacpacPath"
-              exit 1
-          }
-          
-          # Download SqlPackage if needed
-          if (!(Test-Path "SqlPackage\SqlPackage.exe")) {
-              Write-Host "Downloading SqlPackage..."
-              Invoke-WebRequest -Uri "https://aka.ms/sqlpackage-windows" -OutFile "SqlPackage.zip"
-              Expand-Archive -Path "SqlPackage.zip" -DestinationPath "SqlPackage" -Force
-              Remove-Item "SqlPackage.zip"
-          }
-          
-          $sqlPackage = "SqlPackage\SqlPackage.exe"
-          
-          # Deploy the DACPAC to create the database
-          Write-Host "Deploying DACPAC to create database..."
-          & $sqlPackage /Action:Publish /SourceFile:$dacpacPath /TargetServerName:$serverInstance /TargetDatabaseName:$dbName /p:IncludeCompositeObjects=True
-          
-          if ($LASTEXITCODE -ne 0) {
-              Write-Error "Failed to deploy DACPAC"
-              exit 1
-          }
-          
-          # Wait for deployment to complete
-          Start-Sleep -Seconds 5
-          
-          # Test the assembly
-          Write-Host "Testing assembly..."
-          $testResult = sqlcmd -S $serverInstance -d $dbName -Q "SELECT dbo.EncryptString('test') AS Result" 2>&1
-          
-          if ($LASTEXITCODE -eq 0) {
-              Write-Host "Assembly test successful!"
-              Write-Host $testResult
-          } else {
-              Write-Warning "Assembly test failed: $testResult"
-              Write-Warning "Continuing with artifact creation..."
-          }
-          
-          # Create backup file
-          Write-Host "Creating SQL Server backup..."
-          $bakFullPath = Join-Path $PWD $bakPath
-          sqlcmd -S $serverInstance -Q "BACKUP DATABASE [$dbName] TO DISK = N'$bakFullPath' WITH STATS = 10"
-          
-          if ($LASTEXITCODE -ne 0) {
-              Write-Warning "Failed to create BAK file, continuing..."
-          } else {
-              # Guard: the .bak must stay restorable on SQL Server 2019 (database version 904)
-              $dbVersion = sqlcmd -S $serverInstance -h -1 -W -Q "SET NOCOUNT ON; SELECT DATABASEPROPERTYEX(N'$dbName', 'Version')"
-              Write-Host "BAK database version: $dbVersion"
-              if ([int]("$dbVersion".Trim()) -gt 904) {
-                  Write-Error "BAK database version $dbVersion is newer than SQL Server 2019 (904)"
-                  exit 1
-              }
-          }
-          
-          # Generate SQL script with current assembly binary
-          Write-Host "Generating SQL script with assembly binary..."
-          
-          # Extract assembly binary from deployed database using SqlClient (no size limitations)
-          $connectionString = "Server=$serverInstance;Database=$dbName;Integrated Security=True;TrustServerCertificate=True;"
-          $connection = New-Object System.Data.SqlClient.SqlConnection($connectionString)
-          $connection.Open()
-          
-          $command = $connection.CreateCommand()
-          $command.CommandText = "SELECT content FROM sys.assembly_files WHERE assembly_id = (SELECT assembly_id FROM sys.assemblies WHERE name = 'FastWrappers_TSQL')"
-          
-          $reader = $command.ExecuteReader()
-          $assemblyHex = $null
-          
-          if ($reader.Read()) {
-              $bytes = $reader.GetSqlBytes(0).Value
-              $hexString = [System.BitConverter]::ToString($bytes) -replace '-',''
-              $assemblyHex = "0x$hexString"
-              Write-Host "Assembly binary extracted (length: $($assemblyHex.Length) chars, $($bytes.Length) bytes)"
-          }
-          
-          $reader.Close()
-          $connection.Close()
-          
-          if ($assemblyHex) {
-              # Read template and inject assembly binary
-              $sqlTemplate = Get-Content $templateSqlPath -Raw
-              $finalSql = $sqlTemplate -replace '__ASSEMBLY_FROM_0X__', $assemblyHex
-              $finalSql | Out-File -FilePath $generatedSqlPath -Encoding UTF8
-              Write-Host "SQL script generated successfully"
-          } else {
-              Write-Warning "Failed to extract assembly binary"
-          }
-          
-          # List all created artifacts
-          Write-Host "`nCreated artifacts:"
-          Get-ChildItem -Path $outputDir -File | Format-Table Name, Length
-          
-          Write-Host "All artifacts processing completed!"
-      
-      - name: Get version from tag
-        id: get_version
-        shell: bash
-        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
-      
-      - name: Prepare Release Files
+          Invoke-WebRequest -Uri "https://aka.ms/sqlpackage-windows" -OutFile "SqlPackage.zip"
+          Expand-Archive -Path "SqlPackage.zip" -DestinationPath "$env:RUNNER_TEMP\SqlPackage" -Force
+
+      - name: Build and validate the packages
         shell: powershell
-        run: |
-          # Create a release directory with all available artifacts
-          New-Item -Path "release" -ItemType Directory -Force | Out-Null
-          
-          # Copy available files
-          $files = @(
-              @{Source="bin\Release\FastWrappers-TSQL.bak"; Name="FastWrappers-TSQL.bak"},
-              @{Source="bin\Release\FastWrappers-TSQL.sql"; Name="FastWrappers-TSQL.sql"}
-          )
-          
-          foreach ($file in $files) {
-              if (Test-Path $file.Source) {
-                  Copy-Item $file.Source "release\$($file.Name)" -Force
-                  Write-Host "Copied $($file.Name)"
-              } else {
-                  Write-Warning "$($file.Name) not found, skipping"
-              }
-          }
-          
-          Write-Host "`nRelease files:"
-          Get-ChildItem -Path "release" | Format-Table Name, Length
-      
-      - name: Create Release
-        id: create_release
-        uses: softprops/action-gh-release@v1
-        with:
-          name: Release v${{ steps.get_version.outputs.VERSION }}
-          body: |
-            ## FastWrappers-TSQL v${{ steps.get_version.outputs.VERSION }}
-            
-            ### Installation Files
-            
-            - **FastWrappers-TSQL.bak** - SQL Server Backup (restore using SSMS)
-            - **FastWrappers-TSQL.sql** - SQL Script (execute using sqlcmd or SSMS)
-            
-            ### Installation
-            
-            **Option 1: Restore from backup (.bak file)**
-            ```sql
-            -- Restore database
-            RESTORE DATABASE [FastWrappers-TSQL] FROM DISK = 'FastWrappers-TSQL.bak';
-            GO
-            
-            -- Enable TRUSTWORTHY and CLR
-            ALTER DATABASE [FastWrappers-TSQL] SET TRUSTWORTHY ON;
-            GO
-            
-            EXEC sp_configure 'show advanced options', 1;
-            RECONFIGURE;
-            EXEC sp_configure 'clr enabled', 1;
-            RECONFIGURE;
-            GO
-            
-            -- IMPORTANT: Change database owner to 'sa' 
-            -- Required for signed UNSAFE assemblies to load properly
-            USE [FastWrappers-TSQL];
-            GO
-            EXEC sp_changedbowner 'sa';
-            GO
-            
-            -- Test
-            SELECT dbo.EncryptString('test');
-            ```
-            
-            **Option 2: Execute SQL Script (.sql file)**
-            ```sql
-            -- Simply execute the script in SSMS or using sqlcmd
-            sqlcmd -S YourServer -i FastWrappers-TSQL.sql
-            ```
-            
-            ### Usage
-            
-            See [README.md](https://github.com/${{ github.repository }}/blob/main/README.md) for examples.
-          files: |
-            release/*
-          draft: false
-          prerelease: false
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
+        run: >
+          .github\scripts\Build-Packages.ps1
+          -ServerInstance "(localdb)\FW2019"
+          -SqlPackage "$env:RUNNER_TEMP\SqlPackage\SqlPackage.exe"
+          -OutputDir release
+          -Tag "$env:RELEASE_TAG"
+          -MaxDatabaseVersion 904
+
+      - name: Upload the packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: FastWrappers-TSQL-packages
+          path: |
+            release/FastWrappers-TSQL.dacpac
+            release/FastWrappers-TSQL.bak
+            release/FastWrappers-TSQL.sql
+          if-no-files-found: error
+
+  release:
+    if: github.ref_type == 'tag'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download the packages
+        uses: actions/download-artifact@v4
+        with:
+          name: FastWrappers-TSQL-packages
+          path: release
+
+      - name: Create the GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: FastWrappers-TSQL ${{ github.ref_name }}
+          fail_on_unmatched_files: true
+          generate_release_notes: true
+          body: |
+            ## Installation files
+
+            | File | Use | SQL Server |
+            |---|---|---|
+            | **FastWrappers-TSQL.sql** | Self-contained script: installs or upgrades, and can be replayed | 2017+ |
+            | **FastWrappers-TSQL.bak** | Backup of the database, to restore | 2019+ |
+            | **FastWrappers-TSQL.dacpac** | Data-tier package, to publish with SqlPackage or Visual Studio | 2017+ |
+
+            The `.bak` and the `.dacpac` need a post-installation configuration.
+            See the [installation guide and the compatibility table](https://github.com/${{ github.repository }}/blob/${{ github.ref_name }}/README.md#installation).
+          files: |
+            release/FastWrappers-TSQL.dacpac
+            release/FastWrappers-TSQL.bak
+            release/FastWrappers-TSQL.sql

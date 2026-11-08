@@ -19,5 +19,18 @@
 //     Numéro de build
 //      Révision
 //
-[assembly: AssemblyVersion("1.1.0.0")]
-[assembly: AssemblyFileVersion("1.1.0.0")]
+[assembly: AssemblyVersion(FastWrapper.WrapperVersions.Wrapper)]
+[assembly: AssemblyFileVersion(FastWrapper.WrapperVersions.Wrapper)]
+
+namespace FastWrapper
+{
+	// Single source of the versions used by the assembly and by the wrappers.
+	internal static class WrapperVersions
+	{
+		public const string Wrapper = "1.2.0.0";
+
+		// Versions of the binaries the wrappers were validated with
+		public const string FastTransfer = "0.18.2";
+		public const string FastBCP = "1.6.7";
+	}
+}

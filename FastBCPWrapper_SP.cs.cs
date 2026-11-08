@@ -17,15 +17,15 @@ namespace FastWrapper
 			SqlString fastBcpDir,
 
 			// Connection infosa
-			SqlString connectionType,          // clickhouse;hana;msoledbsql;mssql;mysql;nzcopy;nzoledb;nzsql;odbc;oledb;oraodp;pgcopy;pgsql;teradata;adbc_mssql;adbc_pgsql;adbc_oracle;adbc_netezza;adbc_teradata
+			SqlString connectionType,          // clickhouse;hana;msoledbsql;mssql;mysql;nzcopy;nzoledb;nzsql;odbc;oledb;oraodp;pgcopy;pgsql;teradata;adbc_mssql;adbc_pgsql;adbc_oracle;adbc_netezza;adbc_teradata;backup_mssql;backup_rman
 			SqlString sourceConnectStringEnc,  // chiffré (Base64) ; exclusif avec DSN/Provider/Server/User/Password/Trusted/Database
 			SqlString sourcedsn,                     // DSN (exclusif avec Provider/Server)
 			SqlString sourceprovider,                // OleDB sourceprovider (MSOLEDBSQL, NZOLEDB, …)
-			SqlString sourceserver,                  // Server | Server\Instance | Server:Port
-			SqlString sourceuser,                    // facultatif si Trusted
-			SqlString sourcepasswordEnc,             // chiffré (Base64) ; exclusif avec Trusted
+			SqlString sourceserver,                  // Server | Server\Instance | Server:Port (backup_mssql/backup_rman : répertoire des backups)
+			SqlString sourceuser,                    // facultatif si Trusted (backup_mssql : fichier de la clé privée d'un backup chiffré)
+			SqlString sourcepasswordEnc,             // chiffré (Base64) ; exclusif avec Trusted (backup_mssql : mot de passe de la clé privée)
 			SqlBoolean trusted,                // exclusif avec User/Password
-			SqlString sourcedatabase,          // obligatoire si pas de connectstring
+			SqlString sourcedatabase,          // obligatoire si pas de connectstring (backup_mssql/backup_rman : fichiers de backup, motifs * ? ou liste séparée par ;)
 			SqlString applicationintent,       // ReadOnly (default) | ReadWrite (SQL Server & OLEDB only)
 
 			// Sources infos
@@ -63,7 +63,7 @@ namespace FastWrapper
 			SqlString config,                  // --config (YAML config file)
 			SqlString cloudprofile,            // --cloudprofile
 			SqlString license,                 // --license | --licence
-			SqlString loglevel,                 // --loglevel Information|Debug|Verbose
+			SqlString loglevel,                 // --loglevel Information|Debug
 			SqlBoolean nobanner,               // --nobanner (suppress banner)
 			SqlBoolean debug                   // --debug (output stdout to SQL client)
 		)
@@ -141,10 +141,24 @@ namespace FastWrapper
 			string[] allowedConn = {
 				"clickhouse","hana","msoledbsql","mssql","mysql",
 				"nzcopy","nzoledb","nzsql","odbc","oledb","oraodp","pgcopy","pgsql","teradata",
-				"adbc_mssql","adbc_pgsql","adbc_oracle","adbc_netezza","adbc_teradata"
+				"adbc_mssql","adbc_pgsql","adbc_oracle","adbc_netezza","adbc_teradata",
+				"backup_mssql","backup_rman"
 			};
 			if (Array.IndexOf(allowedConn, connType) < 0)
 				throw new ArgumentException($"Invalid connectiontype '{connType}'. Possible values are {string.Join(", ", allowedConn)}.");
+
+			// Backup sources (FastBCP >= 1.5) : files read in place, with no database engine behind them.
+			// sourceserver = directory of the backups, sourcedatabase = names or patterns of the files.
+			bool isBackupSource = connType == "backup_mssql" || connType == "backup_rman";
+			if (isBackupSource)
+			{
+				if (trustedVal || !string.IsNullOrEmpty(dsnVal) || !string.IsNullOrEmpty(providerVal))
+					throw new ArgumentException($"{connType} reads files : isTrusted, sourcedsn and sourceprovider cannot be used.");
+				// backup_mssql only : user/password = private key of an encrypted backup, connect string = driver options
+				if (connType == "backup_rman" &&
+					(!string.IsNullOrEmpty(userVal) || !string.IsNullOrEmpty(passwordVal) || !string.IsNullOrEmpty(connectString)))
+					throw new ArgumentException("backup_rman does not use sourceuser, sourcepassword or sourceconnectstring.");
+			}
 
 			// Parallel method (case insensitive, normalized to FastBCP casing)
 			if (!string.IsNullOrEmpty(methodVal))
@@ -183,7 +197,7 @@ namespace FastWrapper
 			// DistinctGroupsCertification("A","U,X") → Trusted XOR (User or Password)
 			if (trustedVal && (!string.IsNullOrEmpty(userVal) || !string.IsNullOrEmpty(passwordVal)))
 				throw new ArgumentException("trusted cannot be used together with sourceuser/password.");
-			if (!trustedVal && (string.IsNullOrEmpty(userVal) || string.IsNullOrEmpty(passwordVal)) && string.IsNullOrEmpty(connectString))
+			if (!isBackupSource && !trustedVal && (string.IsNullOrEmpty(userVal) || string.IsNullOrEmpty(passwordVal)) && string.IsNullOrEmpty(connectString))
 				throw new ArgumentException("When not trusted and no connectstring, sourceuser and password are required.");
 
 			// Exclusivity connectstring vs (sourcedsn/sourceprovider/sourceserver/sourceuser/password/trusted/sourcedatabase)
@@ -350,6 +364,7 @@ namespace FastWrapper
 			{
 				string argLine4Log = Regex.Replace(argLine, @"--sourcepassword\s+""[^""]*""", "--sourcepassword \"<hidden>\"");
 				argLine4Log = Regex.Replace(argLine4Log, @"--sourceconnectstring\s+""[^""]*""", "--sourceconnectstring \"<hidden>\"");
+				SqlContext.Pipe.Send($"FastWrappers-TSQL {WrapperVersions.Wrapper} (validated with FastBCP {WrapperVersions.FastBCP})\r\n");
 				SqlContext.Pipe.Send("FastBCP Command:\r\n" + exePath + " " + argLine4Log + "\r\n");
 			}
 
